@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CreatorBuddy</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">C</div>
+          <div>
+            <div class="brand-name">CreatorBuddy</div>
+            <div class="brand-subtitle">自媒体增长系统</div>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="主导航">
+          <button class="nav-item active" data-section="today">
+            <span class="icon">◎</span>
+            <span>今日机会</span>
+          </button>
+          <button class="nav-item" data-section="signals">
+            <span class="icon">⌁</span>
+            <span>趋势信号</span>
+          </button>
+          <button class="nav-item" data-section="drafts">
+            <span class="icon">✎</span>
+            <span>内容草稿</span>
+          </button>
+          <button class="nav-item" data-section="library">
+            <span class="icon">▤</span>
+            <span>内容资产</span>
+          </button>
+          <button class="nav-item" data-section="review">
+            <span class="icon">✓</span>
+            <span>复盘</span>
+          </button>
+          <button class="nav-item" data-section="strategy">
+            <span class="icon">⌬</span>
+            <span>策略库</span>
+          </button>
+          <button class="nav-item" data-section="settings">
+            <span class="icon">⚙</span>
+            <span>设置</span>
+          </button>
+        </nav>
+
+        <div class="workspace-card">
+          <div class="avatar">G</div>
+          <div>
+            <div class="workspace-name" id="workspaceName">工作区</div>
+            <div class="workspace-meta" id="workspaceMeta">本地优先</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <button class="workspace-switch" id="workspaceSwitch">创作者工作区 <span>⌄</span></button>
+          <div class="topbar-center" id="todayDate">今天</div>
+          <div class="run-state">
+            <span class="state-dot"></span>
+            <span id="runStateText">正在读取系统状态</span>
+          </div>
+        </header>
+
+        <section class="content-grid" id="todayView">
+          <section class="focus-panel">
+            <div class="eyebrow">今日最高优先级</div>
+            <div class="hero-row">
+              <div>
+                <h1 id="recommendationTitle">正在读取今日机会</h1>
+                <div class="meta-line">
+                  <span id="recommendationPlatform">平台待确认</span>
+                  <span>·</span>
+                  <span id="recommendationReason">读取账号、样本和策略中</span>
+                </div>
+              </div>
+              <div class="score-block">
+                <div class="score-label">推荐分</div>
+                <div class="score-value" id="recommendationScore">--</div>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="primary-button" id="createDraftButton">生成草稿</button>
+              <button class="secondary-button" id="reviewEvidenceButton">查看证据</button>
+            </div>
+
+            <section class="draft-preview" id="draftPreview" hidden>
+              <div class="section-title">草稿简报</div>
+              <h2 id="draftTitle"></h2>
+              <p id="draftOpening"></p>
+              <div class="draft-columns">
+                <div>
+                  <strong>内容结构</strong>
+                  <ol id="draftStructure"></ol>
+                </div>
+                <div>
+                  <strong>发布检查</strong>
+                  <ul id="draftChecklist"></ul>
+                </div>
+              </div>
+            </section>
+
+            <div class="section-divider"></div>
+
+            <section>
+              <div class="section-title">关键证据</div>
+              <div class="evidence-list" id="evidenceList"></div>
+            </section>
+
+            <div class="command-bar">
+              <span class="command-key">⌘ K</span>
+              <input id="commandInput" placeholder="让 CreatorBuddy 分析选题或生成草稿..." />
+              <button id="commandButton" aria-label="执行指令">→</button>
+            </div>
+          </section>
+
+          <aside class="system-panel">
+            <section class="system-section">
+              <div class="section-title">系统状态</div>
+              <div class="status-list" id="statusList"></div>
+            </section>
+
+            <section class="system-section">
+              <div class="section-title">今日流程</div>
+              <div class="agenda">
+                <div class="agenda-item">
+                  <time>09:30</time>
+                  <div>
+                    <strong>采集信号</strong>
+                    <span>采集平台样本与趋势</span>
+                  </div>
+                </div>
+                <div class="agenda-item">
+                  <time>14:00</time>
+                  <div>
+                    <strong>草稿检查</strong>
+                    <span>检查标题、结构和风险</span>
+                  </div>
+                </div>
+                <div class="agenda-item">
+                  <time>21:00</time>
+                  <div>
+                    <strong>发布复盘</strong>
+                    <span>沉淀表现和经验</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="system-section">
+              <div class="section-title">快捷操作</div>
+              <div class="quick-actions">
+                <button id="runDailyButton">运行今日计划</button>
+                <button id="scoreButton">刷新选题评分</button>
+                <button id="precheckDemoButton">检查当前样本</button>
+              </div>
+            </section>
+          </aside>
+        </section>
+
+        <section class="page-view" id="pageView" hidden>
+          <div class="page-header">
+            <div>
+              <div class="eyebrow" id="pageEyebrow">工作台</div>
+              <h1 class="page-title" id="pageTitle">页面</h1>
+            </div>
+            <p id="pageDescription"></p>
+          </div>
+          <div class="page-content" id="pageContent"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

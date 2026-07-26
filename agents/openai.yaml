@@ -1,0 +1,3 @@
+display_name: CreatorBuddy Agent
+short_description: Local-first self-media growth agent for daily topics, drafts, prechecks, and reviews.
+default_prompt: 初始化 CreatorBuddy，并帮我生成今日内容机会。

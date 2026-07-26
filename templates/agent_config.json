@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "workspace_id": "creatorbuddy-workspace",
+  "owner": "",
+  "goal": "内容获客 -> 产品成交 -> 社群/课程/咨询",
+  "timezone": "Asia/Shanghai",
+  "platforms": [
+    {
+      "platform": "xiaohongshu",
+      "account_id": "",
+      "account_name": "",
+      "enabled": true,
+      "positioning": "",
+      "target_audience": "",
+      "benchmark_industries": [
+        "AI工具教程",
+        "普通人AI副业",
+        "个人成长"
+      ],
+      "benchmark_accounts": []
+    },
+    {
+      "platform": "douyin",
+      "account_id": "",
+      "account_name": "",
+      "enabled": true,
+      "positioning": "",
+      "target_audience": "",
+      "benchmark_industries": [
+        "AI个人成长",
+        "AI变现",
+        "AI工具教程"
+      ],
+      "benchmark_accounts": []
+    },
+    {
+      "platform": "wechat-mp",
+      "account_id": "",
+      "account_name": "",
+      "enabled": true,
+      "positioning": "",
+      "target_audience": "",
+      "benchmark_industries": [
+        "AI学习",
+        "AI工作流",
+        "个人知识管理"
+      ],
+      "benchmark_accounts": []
+    }
+  ],
+  "product_keywords": [
+    "AI",
+    "Agent",
+    "Skill",
+    "课程",
+    "咨询",
+    "训练营",
+    "服务"
+  ],
+  "risk_keywords": [
+    "保证",
+    "稳赚",
+    "躺赚",
+    "暴富",
+    "100%",
+    "包过",
+    "立刻变现"
+  ]
+}
