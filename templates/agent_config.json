@@ -4,6 +4,12 @@
   "owner": "",
   "goal": "内容获客 -> 产品成交 -> 社群/课程/咨询",
   "timezone": "Asia/Shanghai",
+  "onboarding": {
+    "current_step": "connect_account",
+    "steps": ["connect_account", "choose_benchmark", "import_content", "start_growth"]
+  },
+  "default_collection_limit": 10,
+  "review_offsets": ["2h", "24h", "48h", "7d"],
   "platforms": [
     {
       "platform": "xiaohongshu",
@@ -12,6 +18,9 @@
       "enabled": true,
       "positioning": "",
       "target_audience": "",
+      "collect_own_account": true,
+      "frequency": "daily",
+      "collect_args": {},
       "benchmark_industries": [
         "AI工具教程",
         "普通人AI副业",
@@ -26,6 +35,9 @@
       "enabled": true,
       "positioning": "",
       "target_audience": "",
+      "collect_own_account": true,
+      "frequency": "daily",
+      "collect_args": {},
       "benchmark_industries": [
         "AI个人成长",
         "AI变现",
@@ -40,6 +52,9 @@
       "enabled": true,
       "positioning": "",
       "target_audience": "",
+      "collect_own_account": true,
+      "frequency": "daily",
+      "collect_args": {},
       "benchmark_industries": [
         "AI学习",
         "AI工作流",
@@ -65,5 +80,13 @@
     "100%",
     "包过",
     "立刻变现"
-  ]
+  ],
+  "scoring_weights": {
+    "trend_heat": 25,
+    "own_account_fit": 20,
+    "product_fit": 20,
+    "historical_lessons": 15,
+    "evidence_strength": 15,
+    "production_cost": 5
+  }
 }

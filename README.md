@@ -28,6 +28,14 @@ python scripts\creatorbuddy.py init
 python scripts\creatorbuddy.py today
 ```
 
+首用时严格按以下顺序执行：连接账号、添加对标账号、检查 onboarding 状态、记录第一条已发布内容，再生成今日选题。详见 [`docs/agent-workbench-flow.md`](docs/agent-workbench-flow.md)。
+
+```powershell
+python scripts\creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
+python scripts\creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"
+python scripts\creatorbuddy.py onboarding-status
+```
+
 Default workspace:
 
 ```text

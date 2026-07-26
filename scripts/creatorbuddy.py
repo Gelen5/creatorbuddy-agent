@@ -91,6 +91,99 @@ def load_config(workspace: Path) -> dict[str, Any]:
     return config
 
 
+def save_config(workspace: Path, config: dict[str, Any]) -> None:
+    write_json(paths(workspace)["config"], config)
+
+
+def find_platform(config: dict[str, Any], platform: str) -> dict[str, Any] | None:
+    return next((item for item in config.get("platforms", []) if item.get("platform") == platform), None)
+
+
+def update_onboarding(config: dict[str, Any], workspace: Path) -> None:
+    platforms = [item for item in config.get("platforms", []) if item.get("enabled", True)]
+    connected = any(item.get("account_id") and item.get("collect_own_account", True) for item in platforms)
+    benchmarked = any(item.get("benchmark_industries") or item.get("benchmark_accounts") for item in platforms)
+    imported = len(read_jsonl(paths(workspace)["content"])) > 0
+    grown = bool(read_json(paths(workspace)["scores"], []))
+    steps = [connected, benchmarked, imported, grown]
+    config.setdefault("onboarding", {})["steps"] = [
+        "connect_account", "choose_benchmark", "import_content", "start_growth"
+    ]
+    config["onboarding"]["current_step"] = next(
+        (step for step, complete in zip(config["onboarding"]["steps"], steps) if not complete),
+        "start_growth",
+    )
+
+
+def command_set_account(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    config = load_config(workspace)
+    platform_cfg = find_platform(config, args.platform)
+    if platform_cfg is None:
+        raise SystemExit(f"未找到平台配置：{args.platform}")
+    platform_cfg.update({
+        "account_id": args.account_id,
+        "account_name": args.account_name,
+        "enabled": True,
+        "collect_own_account": True,
+    })
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+    print(json.dumps({"ok": True, "platform": args.platform, "next_step": config["onboarding"]["current_step"]}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_add_benchmark(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    config = load_config(workspace)
+    platform_cfg = find_platform(config, args.platform)
+    if platform_cfg is None:
+        raise SystemExit(f"未找到平台配置：{args.platform}")
+    accounts = platform_cfg.setdefault("benchmark_accounts", [])
+    account = {"account_id": args.account_id, "account_name": args.account_name, "url": args.url or "", "enabled": True}
+    existing = next((item for item in accounts if item.get("account_id") == args.account_id), None)
+    if existing:
+        existing.update(account)
+    else:
+        accounts.append(account)
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+    print(json.dumps({"ok": True, "platform": args.platform, "benchmark_account": account, "next_step": config["onboarding"]["current_step"]}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_onboarding_status(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    config = load_config(workspace)
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+    platforms = [item for item in config.get("platforms", []) if item.get("enabled", True)]
+    connected = [item for item in platforms if item.get("account_id") and item.get("collect_own_account", True)]
+    benchmarked = [item for item in platforms if item.get("benchmark_industries") or item.get("benchmark_accounts")]
+    published_count = len(read_jsonl(paths(workspace)["content"]))
+    scores_ready = bool(read_json(paths(workspace)["scores"], []))
+    result = {
+        "ok": bool(connected and benchmarked and published_count > 0 and scores_ready),
+        "current_step": config["onboarding"]["current_step"],
+        "steps": {
+            "connect_account": bool(connected),
+            "choose_benchmark": bool(benchmarked),
+            "import_content": published_count > 0,
+            "start_growth": scores_ready,
+        },
+        "connected_platforms": [item.get("platform") for item in connected],
+        "published_content_count": published_count,
+        "next_action": {
+            "connect_account": "set-account",
+            "choose_benchmark": "add-benchmark",
+            "import_content": "review",
+            "start_growth": "today",
+        }.get(config["onboarding"]["current_step"], "today"),
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def command_init(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace or default_workspace())
     ps = paths(workspace)
@@ -341,6 +434,22 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--owner", default="")
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=command_init)
+
+    account = sub.add_parser("set-account", help="连接或更新一个自有平台账号")
+    account.add_argument("--platform", required=True)
+    account.add_argument("--account-id", required=True)
+    account.add_argument("--account-name", required=True)
+    account.set_defaults(func=command_set_account)
+
+    benchmark = sub.add_parser("add-benchmark", help="添加或更新一个对标账号")
+    benchmark.add_argument("--platform", required=True)
+    benchmark.add_argument("--account-id", required=True)
+    benchmark.add_argument("--account-name", required=True)
+    benchmark.add_argument("--url", default="")
+    benchmark.set_defaults(func=command_add_benchmark)
+
+    onboarding = sub.add_parser("onboarding-status", help="检查工作台是否完成首用流程")
+    onboarding.set_defaults(func=command_onboarding_status)
 
     today = sub.add_parser("today", help="generate today's content opportunities")
     today.add_argument("--topic", action="append", default=[])

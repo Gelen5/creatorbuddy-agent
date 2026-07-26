@@ -8,8 +8,26 @@ description: CreatorBuddy 自媒体增长 Agent 内测包。Use when the user wa
 CreatorBuddy is a local-first self-media growth agent for Codex users. It helps a creator move through:
 
 ```text
-账号配置 -> 今日内容机会 -> 草稿简报 -> 发布检查 -> 发布记录 -> 复盘沉淀
+连接账号 -> 配置行业/对标 -> 读取自有数据 -> 采集公开信号 -> 选题评分 -> 平台化草稿 -> 发布检查 -> 发布记录 -> 复盘 -> 策略确认 -> 下次生成前回读
 ```
+
+## Strict Agent Workflow
+
+Every account, benchmark, topic, draft, publishing, review, or self-growth task must follow this order:
+
+1. Confirm workspace, account, platform, goal, and deliverable.
+2. Read owned account/content/review/conversion evidence first.
+3. Collect current public industry and benchmark signals only when trend judgment is needed.
+4. Label evidence as owned, public sample, inference, historical, or unknown.
+5. Score with sources, reasons, evidence strength, platform fit, and production cost.
+6. Route platform-specific work to the matching platform logic.
+7. Run pre-publish checks before marking content ready.
+8. Record published time, platform, metrics, comments, conversions, and review state.
+9. Review at `2h`, `24h`, `48h`, and `7d`, recording facts before explanations.
+10. Write strategy candidates after review; require user confirmation before activation.
+11. Read confirmed active strategies before the next recommendation or draft.
+
+Never present public samples as owned backend metrics, guarantee virality, invent missing metrics or conversions, or promote an unconfirmed review into a permanent rule.
 
 Use the bundled CLI for deterministic work:
 
@@ -24,6 +42,16 @@ If the user has not initialized CreatorBuddy, run:
 ```powershell
 python scripts/creatorbuddy.py init
 python scripts/creatorbuddy.py doctor
+```
+
+Then complete the four-step onboarding path:
+
+```powershell
+python scripts/creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
+python scripts/creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"
+python scripts/creatorbuddy.py onboarding-status
+python scripts/creatorbuddy.py review --platform xiaohongshu --title "第一条已发布内容" --metrics-json '{"likes":0,"comments":0}'
+python scripts/creatorbuddy.py today
 ```
 
 Default workspace:
