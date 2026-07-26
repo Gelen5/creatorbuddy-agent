@@ -30,10 +30,14 @@ python scripts\creatorbuddy.py today
 
 首用时严格按以下顺序执行：连接账号、添加对标账号、检查 onboarding 状态、记录第一条已发布内容，再生成今日选题。详见 [`docs/agent-workbench-flow.md`](docs/agent-workbench-flow.md)。
 
+Codex 和 WorkBuddy 都只调用 GitHub 仓库里的 CLI，运行时契约见 [`docs/agent-runtime-contract.md`](docs/agent-runtime-contract.md)。
+WorkBuddy 的安装和调用方式见 [`docs/workbuddy-install.md`](docs/workbuddy-install.md)。
+
 ```powershell
 python scripts\creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
 python scripts\creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"
 python scripts\creatorbuddy.py onboarding-status
+python scripts\creatorbuddy.py daily-run
 ```
 
 Default workspace:
@@ -52,13 +56,13 @@ CreatorBuddy creates its own local workspace and stores data under:
 %USERPROFILE%\CreatorBuddy
 ```
 
-But the user should configure their own account profile in:
+The user should configure their own account profile in:
 
 ```text
 %USERPROFILE%\CreatorBuddy\config\agent_config.json
 ```
 
-They need to fill account names, positioning, target audience, keywords, products, and benchmark industries. Without configuration, CreatorBuddy can still run with generic seed topics, but the output will be less personalized.
+They need to fill account names, positioning, target audience, keywords, products, and benchmark industries. Without an account, real recommendation commands are blocked; only an explicit `today --allow-cold-start` is allowed for testing generic seed topics.
 
 ## Optional Web UI
 

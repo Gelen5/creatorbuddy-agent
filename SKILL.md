@@ -29,6 +29,8 @@ Every account, benchmark, topic, draft, publishing, review, or self-growth task 
 
 Never present public samples as owned backend metrics, guarantee virality, invent missing metrics or conversions, or promote an unconfirmed review into a permanent rule.
 
+The repository CLI is the only execution core. A Codex or WorkBuddy surface must call these commands and must not reimplement scoring, review, or strategy logic. The workspace directory is only a data/report target.
+
 Use the bundled CLI for deterministic work:
 
 ```powershell
@@ -52,6 +54,31 @@ python scripts/creatorbuddy.py add-benchmark --platform xiaohongshu --account-id
 python scripts/creatorbuddy.py onboarding-status
 python scripts/creatorbuddy.py review --platform xiaohongshu --title "第一条已发布内容" --metrics-json '{"likes":0,"comments":0}'
 python scripts/creatorbuddy.py today
+```
+
+每日完整运行：
+
+```powershell
+python scripts/creatorbuddy.py daily-run
+```
+
+注册 Windows 每日运行任务：
+
+```powershell
+python scripts/creatorbuddy.py install-scheduler --time 09:30 --register
+```
+
+录入外部适配器信号后标准化：
+
+```powershell
+python scripts/creatorbuddy.py collect --file "signals.jsonl"
+```
+
+生成和确认自成长策略：
+
+```powershell
+python scripts/creatorbuddy.py self-growth
+python scripts/creatorbuddy.py approve-strategy --candidate-id "candidate-id"
 ```
 
 Default workspace:
@@ -104,6 +131,12 @@ Record published content for later review:
 python scripts/creatorbuddy.py review --platform xiaohongshu --title "已发布标题" --metrics-json "{\"likes\":10,\"collects\":3}"
 ```
 
+完整发布记录可以补充评论、转化和复盘经验：
+
+```powershell
+python scripts/creatorbuddy.py review --platform xiaohongshu --title "已发布标题" --published-at "2026-07-26T20:00:00" --metrics-json "{\"likes\":10}" --comments-json "[\"用户反馈\"]" --conversions-json "{\"inquiries\":1}" --lessons-json "[\"开头需要更具体\"]"
+```
+
 Start the optional local web workbench:
 
 ```powershell
@@ -133,7 +166,7 @@ Do not hard-code Gelen, Gelen OS, or the original developer's accounts into a us
 ## Evidence Rules
 
 - Treat generated scores as prioritization, not proof that a topic will go viral.
-- If platform account data is not connected, say it is using config seeds and local records only.
+- If platform account data is not connected, block normal recommendations; only an explicit `today --allow-cold-start` may use config seeds for testing.
 - Keep public samples, user-owned records, and AI inference separate.
 - Preserve user data inside that user's CreatorBuddy workspace.
 
