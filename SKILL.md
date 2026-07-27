@@ -29,6 +29,40 @@ Every account, benchmark, topic, draft, publishing, review, or self-growth task 
 
 Never present public samples as owned backend metrics, guarantee virality, invent missing metrics or conversions, or promote an unconfirmed review into a permanent rule.
 
+## Mandatory Draft Gate
+
+For Douyin/TikTok scripts, covers, titles, captions, topic plans, or any creator-facing content draft, the agent must pass this gate before writing final copy:
+
+1. Read owned evidence first: recent owned content, metrics, comments, daily inputs, existing content assets, and product/case proof.
+2. Read the user's current style rules and previous confirmed drafts.
+3. Run a hook diagnosis before writing the first 3 seconds: topic, hook, credibility, suspense, and spoken-flow fit.
+4. Extract the benchmark structure before writing: real result, counterintuitive judgment, creator state, and concrete problem.
+5. Only then write the draft, and connect it to the user's business path.
+
+The final response or generated markdown must include a short workflow receipt:
+
+```text
+Owned evidence read:
+Product/case proof read:
+Style rules read:
+Hook diagnosis:
+Benchmark structure used:
+Missing data:
+Business-path connection:
+```
+
+If any required item is missing, do not output a final script. Output the missing evidence list and the next collection action instead.
+
+Hard rules:
+
+- No owned evidence, no recommendation.
+- No product or case proof, no product script.
+- No hook diagnosis, no first-three-second script.
+- No benchmark structure, no final script.
+- Do not replace concrete proof with abstract lines such as "serve a user and produce a result."
+- Each creator script must anchor to a concrete object: a product, skill, published piece, customer case, workflow, or verified experience.
+- If the user says the agent skipped the workflow, first audit the missed steps, then rerun the workflow before rewriting.
+
 The repository CLI is the only execution core. A Codex or WorkBuddy surface must call these commands and must not reimplement scoring, review, or strategy logic. The workspace directory is only a data/report target.
 
 Use the bundled CLI for deterministic work:
