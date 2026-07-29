@@ -88,5 +88,50 @@
     "historical_lessons": 15,
     "evidence_strength": 15,
     "production_cost": 5
+  },
+  "marketing_framework": {
+    "source": "Adapted from Corey Haines marketingskills concepts: offer, content strategy, social, conversion, attribution.",
+    "dimensions": {
+      "offer": {
+        "max_score": 5,
+        "checks": ["specific audience", "clear outcome", "proof asset", "low-friction next step"]
+      },
+      "content_strategy": {
+        "max_score": 5,
+        "checks": ["one core idea", "content pillar fit", "repeatable format", "evidence boundary"]
+      },
+      "social": {
+        "max_score": 5,
+        "checks": ["platform-native hook", "share/save/comment reason", "distribution angle"]
+      },
+      "conversion": {
+        "max_score": 5,
+        "checks": ["CTA path", "product bridge", "objection addressed"]
+      },
+      "attribution": {
+        "max_score": 5,
+        "checks": ["source tag", "content id", "conversion metric", "review checkpoint"]
+      }
+    }
+  },
+  "xiaohongshu_playbook": {
+    "source": "Sanitized Xiaohongshu operations playbook adapted from MIT-licensed public skill patterns.",
+    "workflow": ["profile_gate", "conversion_path", "topic_planner", "title_design", "comment_reply", "prepublish_review"],
+    "profile_gate": [
+      "3-second clarity: who this helps, what problem it solves, why it is credible, and what to do next",
+      "nickname, bio, pinned notes, content line, and product bridge should point to the same promise",
+      "do not invent credentials, data, client outcomes, media exposure, or third-party endorsement"
+    ],
+    "topic_functions": ["attract", "resonate", "trust", "educate", "convert", "interact"],
+    "title_modes": ["cover_short_line", "comment_style", "insight_judgment", "search_conversion"],
+    "title_banned_terms": ["天花板", "YYDS", "绝绝子", "封神", "宝藏", "谁懂啊", "家人们", "闭眼入", "被问爆了", "高级感", "松弛感"],
+    "title_banned_patterns": ["不是", "而是", "表面", "背后", "看起来", "本质", "原来真正的"],
+    "comment_reply_rules": [
+      "respond to the comment first, then extend the conversation",
+      "do not route every comment to private messages",
+      "for objections, acknowledge the concern, clarify the boundary, then offer a low-pressure next step"
+    ],
+    "conversion_path": ["attract", "screen", "trust", "act", "private_message", "revisit"],
+    "measurement_fields": ["content_id", "publish_time", "24h_metrics", "48h_metrics", "7d_metrics", "conversion_signal"]
   }
 }

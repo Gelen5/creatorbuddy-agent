@@ -33,6 +33,10 @@ python scripts\creatorbuddy.py today
 Codex 和 WorkBuddy 都只调用 GitHub 仓库里的 CLI，运行时契约见 [`docs/agent-runtime-contract.md`](docs/agent-runtime-contract.md)。
 WorkBuddy 的安装和调用方式见 [`docs/workbuddy-install.md`](docs/workbuddy-install.md)。
 
+Marketing judgment is built into `today` and `draft`: each recommendation now carries offer, content strategy, social distribution, conversion, and attribution fields. See [`docs/marketing-framework.md`](docs/marketing-framework.md).
+
+Xiaohongshu-specific drafts also include a sanitized playbook for profile clarity, topic function, title mode, comment plan, conversion path, and review metrics. See [`docs/xiaohongshu-playbook.md`](docs/xiaohongshu-playbook.md).
+
 ```powershell
 python scripts\creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
 python scripts\creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"

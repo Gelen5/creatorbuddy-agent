@@ -61,6 +61,50 @@ class WorkflowSmokeTest(unittest.TestCase):
             draft = json.loads(run_cli(workspace, "draft", "--platform", "xiaohongshu").stdout)["draft"]
             self.assertTrue(draft["strategy_context"])
 
+    def test_marketing_framework_is_in_scores_and_drafts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            run_cli(workspace, "set-account", "--platform", "xiaohongshu", "--account-id", "own-1", "--account-name", "test-account")
+            result = json.loads(run_cli(workspace, "today", "--topic", "AI Agent course conversion case").stdout)
+            marketing = result["top"][0]["marketing_judgment"]
+            self.assertEqual(marketing["source"], "marketingskills_adapted_framework")
+            self.assertEqual(len(marketing["dimensions"]), 5)
+            self.assertIn("offer_brief", marketing)
+            self.assertIn("conversion_path", marketing)
+            self.assertIn("attribution_plan", marketing)
+
+            draft = json.loads(run_cli(workspace, "draft", "--platform", "xiaohongshu", "--topic", "AI Agent course conversion case").stdout)["draft"]
+            self.assertEqual(draft["marketing_brief"]["framework_source"], "marketingskills_adapted_framework")
+            self.assertIn("offer", draft["marketing_brief"])
+            self.assertIn("content_strategy", draft["marketing_brief"])
+            self.assertIn("social_distribution", draft["marketing_brief"])
+            self.assertIn("conversion_path", draft["marketing_brief"])
+            self.assertIn("attribution_plan", draft["marketing_brief"])
+            self.assertEqual(draft["xiaohongshu_brief"]["source"], "xiaohongshu_playbook_sanitized")
+            self.assertIn("profile_gate", draft["xiaohongshu_brief"])
+            self.assertIn("topic_planner", draft["xiaohongshu_brief"])
+            self.assertIn("title_design", draft["xiaohongshu_brief"])
+            self.assertIn("comment_plan", draft["xiaohongshu_brief"])
+            self.assertIn("measurement", draft["xiaohongshu_brief"])
+
+    def test_xiaohongshu_precheck_flags_empty_title_cliches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            result = json.loads(run_cli(
+                workspace,
+                "precheck",
+                "--platform",
+                "xiaohongshu",
+                "--title",
+                "AI工具宝藏教程",
+                "--content",
+                "content_id: xhs-1\n正文包含具体步骤和转化路径。",
+            ).stdout)
+            self.assertEqual(result["verdict"], "小改后发布")
+            self.assertIn("小红书标题空泛词：宝藏", result["risks"])
+
 
 if __name__ == "__main__":
     unittest.main()

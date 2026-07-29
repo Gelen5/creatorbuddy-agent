@@ -29,6 +29,33 @@ Every account, benchmark, topic, draft, publishing, review, or self-growth task 
 
 Never present public samples as owned backend metrics, guarantee virality, invent missing metrics or conversions, or promote an unconfirmed review into a permanent rule.
 
+## Marketing Judgment Layer
+
+CreatorBuddy absorbs the useful marketing decision frames from `coreyhaines31/marketingskills` as local runtime fields, not as a second execution engine. `today` and `draft` must surface:
+
+- offer: audience, promise, proof needed, next step;
+- content strategy: pillar, single idea, repeatable format;
+- social distribution: platform-native hook and engagement goal;
+- conversion: CTA, product bridge, objection to address;
+- attribution: content id, source tag, review checkpoints, conversion fields.
+
+Use these fields to improve prioritization and briefs. Do not claim leads, sales, revenue, or attribution unless those facts are present in the workspace records.
+
+## Xiaohongshu Playbook Layer
+
+CreatorBuddy includes a sanitized Xiaohongshu playbook for drafts and pre-publish checks. It absorbs reusable operating patterns from a MIT-licensed public Xiaohongshu workbench, but it does not expose that project's brand, author, manual, or external skill names in user-facing output.
+
+For Xiaohongshu drafts, `draft` must add `xiaohongshu_brief` with:
+
+- profile gate: 3-second clarity, pinned note fit, product bridge;
+- topic planner: attract, resonate, trust, educate, convert, or interact;
+- title design: cover short line, comment style, insight judgment, or search conversion;
+- comment plan: pinned comment and objection reply rules;
+- conversion path: attract, screen, trust, act, private message, revisit;
+- measurement: content_id, publish time, 24h/48h/7d metrics, conversion signal.
+
+For Xiaohongshu prechecks, reject generic title words such as `天花板`, `宝藏`, `被问爆了`, `高级感`, and other empty platform cliches when they appear in the title.
+
 ## Mandatory Draft Gate
 
 For Douyin/TikTok scripts, covers, titles, captions, topic plans, or any creator-facing content draft, the agent must pass this gate before writing final copy:

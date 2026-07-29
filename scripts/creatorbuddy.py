@@ -16,6 +16,59 @@ TEMPLATE_CONFIG = SKILL_DIR / "templates" / "agent_config.json"
 WEB_ASSET_DIR = SKILL_DIR / "assets" / "web"
 
 
+DEFAULT_MARKETING_FRAMEWORK: dict[str, Any] = {
+    "source": "Adapted from Corey Haines marketingskills concepts: offer, content strategy, social, conversion, attribution.",
+    "dimensions": {
+        "offer": {
+            "max_score": 5,
+            "checks": ["specific audience", "clear outcome", "proof asset", "low-friction next step"],
+        },
+        "content_strategy": {
+            "max_score": 5,
+            "checks": ["one core idea", "content pillar fit", "repeatable format", "evidence boundary"],
+        },
+        "social": {
+            "max_score": 5,
+            "checks": ["platform-native hook", "share/save/comment reason", "distribution angle"],
+        },
+        "conversion": {
+            "max_score": 5,
+            "checks": ["CTA path", "product bridge", "objection addressed"],
+        },
+        "attribution": {
+            "max_score": 5,
+            "checks": ["source tag", "content id", "conversion metric", "review checkpoint"],
+        },
+    },
+}
+
+
+DEFAULT_XIAOHONGSHU_PLAYBOOK: dict[str, Any] = {
+    "source": "Sanitized Xiaohongshu operations playbook adapted from MIT-licensed public skill patterns.",
+    "workflow": ["profile_gate", "conversion_path", "topic_planner", "title_design", "comment_reply", "prepublish_review"],
+    "profile_gate": [
+        "3-second clarity: who this helps, what problem it solves, why it is credible, and what to do next",
+        "nickname, bio, pinned notes, content line, and product bridge should point to the same promise",
+        "do not invent credentials, data, client outcomes, media exposure, or third-party endorsement",
+    ],
+    "topic_functions": ["attract", "resonate", "trust", "educate", "convert", "interact"],
+    "title_modes": ["cover_short_line", "comment_style", "insight_judgment", "search_conversion"],
+    "title_banned_terms": [
+        "天花板", "YYDS", "绝绝子", "封神", "宝藏", "谁懂啊", "家人们", "闭眼入", "被问爆了", "高级感", "松弛感",
+    ],
+    "title_banned_patterns": [
+        "不是", "而是", "表面", "背后", "看起来", "本质", "原来真正的",
+    ],
+    "comment_reply_rules": [
+        "respond to the comment first, then extend the conversation",
+        "do not route every comment to private messages",
+        "for objections, acknowledge the concern, clarify the boundary, then offer a low-pressure next step",
+    ],
+    "conversion_path": ["attract", "screen", "trust", "act", "private_message", "revisit"],
+    "measurement_fields": ["content_id", "publish_time", "24h_metrics", "48h_metrics", "7d_metrics", "conversion_signal"],
+}
+
+
 def default_workspace() -> Path:
     root = os.environ.get("CREATORBUDDY_HOME")
     if root:
@@ -102,6 +155,8 @@ def load_config(workspace: Path) -> dict[str, Any]:
         raise SystemExit("CreatorBuddy 尚未初始化。请先运行：python scripts/creatorbuddy.py init")
     config.setdefault("onboarding", {"current_step": "connect_account", "steps": ["connect_account", "choose_benchmark", "import_content", "start_growth"]})
     config.setdefault("review_offsets", ["2h", "24h", "48h", "7d"])
+    config.setdefault("marketing_framework", DEFAULT_MARKETING_FRAMEWORK)
+    config.setdefault("xiaohongshu_playbook", DEFAULT_XIAOHONGSHU_PLAYBOOK)
     return config
 
 
@@ -251,6 +306,114 @@ def command_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def keyword_hits(text: str, keywords: list[str]) -> int:
+    lowered = text.lower()
+    return sum(1 for keyword in keywords if keyword and keyword.lower() in lowered)
+
+
+def marketing_judgment(
+    topic: str,
+    platform: str,
+    config: dict[str, Any],
+    published: list[dict[str, Any]],
+    signals: list[dict[str, Any]],
+) -> dict[str, Any]:
+    platform_cfg = find_platform(config, platform) or {}
+    target_audience = platform_cfg.get("target_audience") or "待补充信息"
+    positioning = platform_cfg.get("positioning") or "待补充信息"
+    topic_text = topic.lower()
+    product_keywords = [str(item) for item in config.get("product_keywords", [])]
+    benchmark_terms = [str(item) for item in platform_cfg.get("benchmark_industries", [])]
+    matching_signals = [
+        item for item in signals
+        if item.get("platform") in (platform, "all")
+        and str(item.get("topic") or item.get("title") or "").lower() in topic_text
+    ]
+    published_on_platform = [item for item in published if item.get("platform") == platform]
+    has_conversion_records = any(item.get("conversions") for item in published_on_platform)
+    has_metrics = any(item.get("metrics") for item in published_on_platform)
+
+    offer_score = 2 + min(3, keyword_hits(topic_text, product_keywords))
+    content_score = 2 + min(3, keyword_hits(topic_text, benchmark_terms) + (1 if matching_signals else 0))
+    social_score = 3 + (1 if platform in {"xiaohongshu", "douyin", "wechat-channels"} else 0)
+    conversion_score = 2 + min(3, keyword_hits(topic_text, product_keywords) + (1 if positioning != "待补充信息" else 0))
+    attribution_score = 1 + (1 if matching_signals else 0) + (1 if has_metrics else 0) + (1 if has_conversion_records else 0)
+
+    dimensions = [
+        {
+            "name": "offer",
+            "score": min(5, offer_score),
+            "max_score": 5,
+            "reason": "Topic can be tied to a sellable promise when product keywords and proof are present.",
+            "missing": [] if product_keywords else ["product_keywords"],
+        },
+        {
+            "name": "content_strategy",
+            "score": min(5, content_score),
+            "max_score": 5,
+            "reason": "Topic should fit one repeatable pillar and one concrete content format.",
+            "missing": [] if benchmark_terms or matching_signals else ["benchmark_industries_or_signals"],
+        },
+        {
+            "name": "social",
+            "score": min(5, social_score),
+            "max_score": 5,
+            "reason": "Platform-native packaging must still be handled by the platform skill.",
+            "missing": [],
+        },
+        {
+            "name": "conversion",
+            "score": min(5, conversion_score),
+            "max_score": 5,
+            "reason": "Content needs a product bridge and a low-friction next action.",
+            "missing": [] if positioning != "待补充信息" else ["platform_positioning"],
+        },
+        {
+            "name": "attribution",
+            "score": min(5, attribution_score),
+            "max_score": 5,
+            "reason": "Every content item should carry source, content id, metrics, and conversion follow-up.",
+            "missing": [] if has_metrics or has_conversion_records else ["metrics_or_conversion_records"],
+        },
+    ]
+    score = sum(int(item["score"]) for item in dimensions)
+    return {
+        "source": "marketingskills_adapted_framework",
+        "score": score,
+        "max_score": 25,
+        "target_audience": target_audience,
+        "positioning": positioning,
+        "dimensions": dimensions,
+        "offer_brief": {
+            "audience": target_audience,
+            "promise": f"Help the audience make progress on: {topic}",
+            "proof_needed": "待补充信息" if not matching_signals else matching_signals[0].get("source_path", "") or matching_signals[0].get("source", ""),
+            "next_step": "comment, save, DM, consult, course, or service path must be selected before publishing",
+        },
+        "content_strategy": {
+            "pillar": benchmark_terms[0] if benchmark_terms else "待补充信息",
+            "format": "platform-native educational proof piece",
+            "single_idea": topic,
+        },
+        "social_distribution": {
+            "platform": platform,
+            "hook_requirement": "use the platform skill to adapt hook, title, cover, and CTA",
+            "engagement_goal": "save/share/comment/DM, chosen per platform",
+        },
+        "conversion_path": {
+            "cta": "low-friction next action",
+            "product_bridge": product_keywords[:5],
+            "objection_to_address": "why this is practical today, not just another AI tutorial",
+        },
+        "attribution_plan": {
+            "content_id_required": True,
+            "source_tag": platform,
+            "review_checkpoints": config.get("review_offsets", ["2h", "24h", "48h", "7d"]),
+            "conversion_fields": ["leads", "dm_count", "consultations", "sales", "revenue"],
+        },
+    }
+
+
 def score_topic(
     topic: str,
     platform: str,
@@ -274,7 +437,9 @@ def score_topic(
     evidence = 5 if not matching_signals else max(5, min(15, max(int(item.get("evidence_score", 5) or 5) for item in matching_signals)))
     cost = 5
     risk = [word for word in risk_keywords if word and word in topic]
-    score = min(95, trend + account_fit + product_fit + history + evidence + cost - len(risk) * 8)
+    marketing = marketing_judgment(topic, platform, config, published, signals)
+    marketing_boost = min(10, int(marketing["score"]) // 3)
+    score = min(95, trend + account_fit + product_fit + history + evidence + cost + marketing_boost - len(risk) * 8)
     source = "normalized_public_signal" if matching_signals else "config_seed"
     evidence_level = "B" if matching_signals else "C"
     return {
@@ -290,9 +455,11 @@ def score_topic(
             f"产品承接 {product_fit}/20",
             f"历史策略 {history}/15",
             f"证据强度 {evidence}/15",
+            f"营销判断 {marketing['score']}/25",
         ],
         "evidence_level": evidence_level,
         "risk": risk,
+        "marketing_judgment": marketing,
     }
 
 
@@ -405,6 +572,9 @@ def command_today(args: argparse.Namespace) -> int:
                 f"- 证据等级：{item['evidence_level']}",
                 f"- 理由：{'；'.join(item['reasons'])}",
                 f"- 风险：{', '.join(item['risk']) if item['risk'] else '暂无明显风险'}",
+                f"- Offer：{item.get('marketing_judgment', {}).get('offer_brief', {}).get('promise', '待补充信息')}",
+                f"- 转化路径：{item.get('marketing_judgment', {}).get('conversion_path', {}).get('cta', '待补充信息')}",
+                f"- 归因计划：content_id + {', '.join(item.get('marketing_judgment', {}).get('attribution_plan', {}).get('conversion_fields', []))}",
                 "",
             ]
         )
@@ -414,10 +584,71 @@ def command_today(args: argparse.Namespace) -> int:
     return 0
 
 
-def make_draft(topic: str, platform: str) -> dict[str, Any]:
+def choose_xiaohongshu_topic_function(topic: str, marketing: dict[str, Any]) -> str:
+    lowered = topic.lower()
+    if any(word in topic for word in ["怎么", "教程", "步骤", "方法", "清单", "模板"]):
+        return "educate"
+    if any(word in topic for word in ["避坑", "错误", "卡住", "焦虑", "不会"]):
+        return "resonate"
+    if any(word in topic for word in ["案例", "复盘", "实操", "结果"]):
+        return "trust"
+    if any(word in topic for word in ["咨询", "课程", "训练营", "服务", "成交"]) or "course" in lowered:
+        return "convert"
+    if any(word in topic for word in ["你觉得", "评论", "投票", "选择"]):
+        return "interact"
+    if marketing.get("conversion_path", {}).get("product_bridge"):
+        return "trust"
+    return "attract"
+
+
+def xiaohongshu_playbook_brief(topic: str, config: dict[str, Any], marketing: dict[str, Any]) -> dict[str, Any]:
+    playbook = config.get("xiaohongshu_playbook") or DEFAULT_XIAOHONGSHU_PLAYBOOK
+    topic_function = choose_xiaohongshu_topic_function(topic, marketing)
+    title_mode = "search_conversion" if topic_function in {"educate", "convert"} else "comment_style"
+    if topic_function == "trust":
+        title_mode = "insight_judgment"
+    return {
+        "source": "xiaohongshu_playbook_sanitized",
+        "workflow": playbook.get("workflow", DEFAULT_XIAOHONGSHU_PLAYBOOK["workflow"]),
+        "profile_gate": {
+            "check": playbook.get("profile_gate", [])[:3],
+            "workspace_fields": ["platforms[].positioning", "platforms[].target_audience", "product_keywords"],
+        },
+        "topic_planner": {
+            "primary_function": topic_function,
+            "allowed_functions": playbook.get("topic_functions", DEFAULT_XIAOHONGSHU_PLAYBOOK["topic_functions"]),
+            "series_rule": "publish trust and education before heavy conversion when the account is cold-starting",
+        },
+        "title_design": {
+            "mode": title_mode,
+            "requirements": [
+                "one concrete scene or user situation",
+                "keyword anchor in title or cover",
+                "no invented numbers, outcomes, identity stories, or third-party proof",
+            ],
+            "banned_terms": playbook.get("title_banned_terms", [])[:12],
+        },
+        "comment_plan": {
+            "pinned_comment": "补充一个公开可见的自查问题或下一篇内容，不把评论作为领资料条件。",
+            "reply_rules": playbook.get("comment_reply_rules", [])[:3],
+        },
+        "conversion_path": {
+            "steps": playbook.get("conversion_path", DEFAULT_XIAOHONGSHU_PLAYBOOK["conversion_path"]),
+            "next_action": marketing.get("conversion_path", {}).get("cta") or "save, comment, follow-up note, trial, consultation, or product page",
+        },
+        "measurement": {
+            "fields": playbook.get("measurement_fields", DEFAULT_XIAOHONGSHU_PLAYBOOK["measurement_fields"]),
+            "review_checkpoints": config.get("review_offsets", ["2h", "24h", "48h", "7d"]),
+        },
+    }
+
+
+def make_draft(topic: str, platform: str, marketing: dict[str, Any] | None = None, config: dict[str, Any] | None = None) -> dict[str, Any]:
     label = platform_label(platform)
+    marketing = marketing or {}
+    config = config or {}
     platform_checklist = {
-        "xiaohongshu": ["标题要有搜索词", "正文要有步骤感", "结尾引导收藏或评论"],
+        "xiaohongshu": ["主页承接要清楚", "标题要有搜索词或评论区口吻", "正文要有步骤感", "置顶评论要补价值", "结尾引导收藏或低压行动"],
         "douyin": ["前 3 秒先给冲突", "一条视频只讲一个观点", "口播句子要短"],
         "wechat-mp": ["开头建立问题背景", "中段给案例和推理", "结尾自然承接产品"],
     }.get(platform, ["保留证据来源", "避免夸大承诺", "明确下一步行动"])
@@ -433,6 +664,16 @@ def make_draft(topic: str, platform: str) -> dict[str, Any]:
             "用一个低压 CTA 承接下一步",
         ],
         "body": f"选题：{topic}\n\n角度：把抽象方法压缩成普通人今天能照做的任务。\n\n正文骨架：\n1. 先说痛点。\n2. 给 3 个任务。\n3. 展示完成标准。\n4. 收尾引导继续行动。",
+        "marketing_brief": {
+            "framework_source": marketing.get("source", "marketingskills_adapted_framework"),
+            "score": marketing.get("score"),
+            "offer": marketing.get("offer_brief", {}),
+            "content_strategy": marketing.get("content_strategy", {}),
+            "social_distribution": marketing.get("social_distribution", {}),
+            "conversion_path": marketing.get("conversion_path", {}),
+            "attribution_plan": marketing.get("attribution_plan", {}),
+        },
+        "xiaohongshu_brief": xiaohongshu_playbook_brief(topic, config, marketing) if platform == "xiaohongshu" else {},
         "checklist": platform_checklist,
         "created_at": now_iso(),
     }
@@ -447,7 +688,11 @@ def command_draft(args: argparse.Namespace) -> int:
     if not topic:
         raise SystemExit("缺少选题。请传入 --topic，或先运行 today。")
     active_rules = read_json(paths(workspace)["active"], {"active_rules": []}).get("active_rules", [])
-    draft = make_draft(topic, platform)
+    existing_candidate = next((item for item in candidates if item.get("topic") == topic and item.get("platform") == platform), None)
+    marketing = existing_candidate.get("marketing_judgment") if existing_candidate else None
+    if not marketing:
+        marketing = marketing_judgment(topic, platform, config, read_jsonl(paths(workspace)["content"]), read_jsonl(paths(workspace)["signals"]))
+    draft = make_draft(topic, platform, marketing, config)
     draft["strategy_context"] = [rule.get("rule") for rule in active_rules if not rule.get("applies_to") or platform in rule.get("applies_to", [])]
     draft["evidence_boundary"] = "推荐分用于排序，不代表爆款保证；请结合实际证据和发布前检查。"
     out = paths(workspace)["drafts"] / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{platform}.json"
@@ -465,17 +710,24 @@ def command_precheck(args: argparse.Namespace) -> int:
         content = Path(args.file).read_text(encoding="utf-8")
     text = f"{title}\n{content}"
     risks = [word for word in config.get("risk_keywords", []) if word and word in text]
+    xhs_title_risks = []
+    playbook = config.get("xiaohongshu_playbook") or DEFAULT_XIAOHONGSHU_PLAYBOOK
+    if args.platform == "xiaohongshu":
+        xhs_title_risks = [word for word in playbook.get("title_banned_terms", []) if word and word in title]
+        risks.extend([f"小红书标题空泛词：{word}" for word in xhs_title_risks])
     missing = []
     if not title.strip():
         missing.append("标题为空")
     if not content.strip():
         missing.append("正文/脚本为空")
+    if "content_id" not in text and "转化" not in text and "CTA" not in text.upper():
+        missing.append("缺少转化或归因说明")
     payload = {
         "ok": not risks and not missing,
         "verdict": "可以进入人工发布确认" if not risks and not missing else "小改后发布",
         "risks": risks,
         "missing": missing,
-        "suggestions": ["保留具体证据", "避免夸大收益", "确认平台表达方式"],
+        "suggestions": ["保留具体证据", "避免夸大收益", "确认平台表达方式", "补充 CTA、content_id 和发布后归因字段", "小红书标题优先用具体场景、用户处境或搜索问题"],
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -750,6 +1002,7 @@ def build_parser() -> argparse.ArgumentParser:
     draft.set_defaults(func=command_draft)
 
     precheck = sub.add_parser("precheck", help="run a lightweight pre-publish check")
+    precheck.add_argument("--platform", default="xiaohongshu")
     precheck.add_argument("--title", default="")
     precheck.add_argument("--content", default="")
     precheck.add_argument("--file", default="")
