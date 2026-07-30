@@ -56,6 +56,29 @@ For Xiaohongshu drafts, `draft` must add `xiaohongshu_brief` with:
 
 For Xiaohongshu prechecks, reject generic title words such as `天花板`, `宝藏`, `被问爆了`, `高级感`, and other empty platform cliches when they appear in the title.
 
+## Benchmark Distillation Layer
+
+CreatorBuddy can now import and distill Xiaohongshu benchmark accounts:
+
+```powershell
+python scripts/creatorbuddy.py import-benchmark --platform xiaohongshu --url "https://www.xiaohongshu.com/user/profile/..."
+python scripts/creatorbuddy.py segment-benchmark --benchmark-id "<benchmark_id>"
+python scripts/creatorbuddy.py distill-creator --benchmark-id "<benchmark_id>"
+```
+
+This first phase supports:
+
+- public Xiaohongshu profile-card extraction;
+- sample understanding labels: `metadata-only`, `partial`, `full`;
+- performance segmentation from visible metrics, mainly likes until detail data is imported;
+- `creator_clone.md` generation with positioning, topic buckets, transferable templates, anti-patterns, and self-check rubric.
+
+Evidence boundary:
+
+- profile cards are benchmark candidates, not full content understanding;
+- body text, comments, full carousel media, OCR, ASR, saves, shares, and conversion require detail links, logged-in capture, or manual imports;
+- never copy exact wording, identity, images, screenshots, claims, or creator stories.
+
 ## Mandatory Draft Gate
 
 For Douyin/TikTok scripts, covers, titles, captions, topic plans, or any creator-facing content draft, the agent must pass this gate before writing final copy:

@@ -37,9 +37,14 @@ Marketing judgment is built into `today` and `draft`: each recommendation now ca
 
 Xiaohongshu-specific drafts also include a sanitized playbook for profile clarity, topic function, title mode, comment plan, conversion path, and review metrics. See [`docs/xiaohongshu-playbook.md`](docs/xiaohongshu-playbook.md).
 
+Benchmark distillation is available for Xiaohongshu public profile cards: import a benchmark profile, segment visible samples, then generate a `creator_clone.md`. See [`docs/benchmark-distillation.md`](docs/benchmark-distillation.md).
+
 ```powershell
 python scripts\creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
 python scripts\creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"
+python scripts\creatorbuddy.py import-benchmark --platform xiaohongshu --url "https://www.xiaohongshu.com/user/profile/..."
+python scripts\creatorbuddy.py segment-benchmark --benchmark-id "benchmark-id"
+python scripts\creatorbuddy.py distill-creator --benchmark-id "benchmark-id"
 python scripts\creatorbuddy.py onboarding-status
 python scripts\creatorbuddy.py daily-run
 ```

@@ -3,17 +3,22 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 TEMPLATE_CONFIG = SKILL_DIR / "templates" / "agent_config.json"
 WEB_ASSET_DIR = SKILL_DIR / "assets" / "web"
+WEB_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
 
 
 DEFAULT_MARKETING_FRAMEWORK: dict[str, Any] = {
@@ -135,6 +140,8 @@ def paths(workspace: Path) -> dict[str, Path]:
         "active": data / "active_strategy.json",
         "runs": data / "run_log.jsonl",
         "reminders": data / "review_reminders.jsonl",
+        "benchmark_samples": data / "benchmark_samples.jsonl",
+        "benchmarks": data / "benchmarks",
         "reports": workspace / "reports",
         "drafts": workspace / "drafts",
     }
@@ -195,6 +202,142 @@ def require_account(workspace: Path, allow_cold_start: bool = False) -> dict[str
     return config
 
 
+def safe_slug(value: str, fallback: str = "item") -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff_-]+", "-", value.strip())
+    cleaned = cleaned.strip("-_")[:80]
+    return cleaned or fallback
+
+
+def fetch_text(url: str) -> str:
+    request = Request(
+        url,
+        headers={
+            "User-Agent": WEB_UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "https://www.xiaohongshu.com/",
+        },
+    )
+    try:
+        with urlopen(request, timeout=60) as response:
+            return response.read().decode("utf-8", errors="replace")
+    except HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"HTTP {error.code}: {detail[:240]}") from error
+    except URLError as error:
+        raise RuntimeError(f"request failed: {error}") from error
+
+
+def fetch_binary(url: str) -> bytes:
+    request = Request(url, headers={"User-Agent": WEB_UA, "Referer": "https://www.xiaohongshu.com/"})
+    with urlopen(request, timeout=60) as response:
+        return response.read()
+
+
+def normalize_url(url: str | None) -> str:
+    if not url:
+        return ""
+    url = url.replace("\\u002F", "/")
+    if url.startswith("//"):
+        return "https:" + url
+    if url.startswith("http://"):
+        return "https://" + url[len("http://"):]
+    return url
+
+
+def parse_xhs_initial_state(html: str) -> dict[str, Any]:
+    marker = "window.__INITIAL_STATE__="
+    start = html.find(marker)
+    if start < 0:
+        raise RuntimeError("window.__INITIAL_STATE__ not found; page may require login or page structure changed")
+    start += len(marker)
+    end = html.find("</script>", start)
+    if end < 0:
+        raise RuntimeError("initial state script terminator not found")
+    raw = html[start:end].strip().rstrip(";")
+    raw = re.sub(r"\bundefined\b", "null", raw)
+    return json.loads(raw)
+
+
+def extract_xhs_profile(data: dict[str, Any]) -> dict[str, Any]:
+    user = data.get("user", {}) if isinstance(data.get("user"), dict) else {}
+    user_page = user.get("userPageData", {}) if isinstance(user.get("userPageData"), dict) else {}
+    cards: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for group in user.get("notes", []):
+        if not isinstance(group, list):
+            continue
+        for item in group:
+            if not isinstance(item, dict):
+                continue
+            card = item.get("noteCard")
+            if not isinstance(card, dict):
+                continue
+            cover = card.get("cover") if isinstance(card.get("cover"), dict) else {}
+            interact = card.get("interactInfo") if isinstance(card.get("interactInfo"), dict) else {}
+            author = card.get("user") if isinstance(card.get("user"), dict) else {}
+            title = str(card.get("displayTitle") or "").strip()
+            cover_url = normalize_url(str(cover.get("urlDefault") or cover.get("urlPre") or ""))
+            key = (title, cover_url)
+            if key in seen:
+                continue
+            seen.add(key)
+            liked_count = interact.get("likedCount")
+            try:
+                liked_count = int(str(liked_count).replace(",", ""))
+            except Exception:
+                liked_count = 0
+            note_id = str(card.get("noteId") or "")
+            content_type = str(card.get("type") or "unknown")
+            cards.append(
+                {
+                    "sample_id": note_id or f"xhs-card-{len(cards) + 1}",
+                    "note_id": note_id,
+                    "xsec_token": card.get("xsecToken") or item.get("xsecToken") or "",
+                    "type": content_type,
+                    "title": title,
+                    "liked_count": liked_count,
+                    "author": author.get("nickname") or author.get("nickName") or "",
+                    "user_id": author.get("userId") or "",
+                    "cover_url": cover_url,
+                    "cover_width": cover.get("width"),
+                    "cover_height": cover.get("height"),
+                }
+            )
+
+    return {
+        "basic_info": user_page.get("basicInfo") or {},
+        "interactions": user_page.get("interactions") or [],
+        "tags": user_page.get("tags") or [],
+        "items": cards,
+    }
+
+
+def sample_understanding_status(sample: dict[str, Any]) -> dict[str, Any]:
+    has_cover = bool(sample.get("cover_file"))
+    has_transcript = bool(sample.get("transcript"))
+    has_ocr = bool(sample.get("ocr_text"))
+    if has_transcript or has_ocr:
+        level = "full"
+    elif has_cover:
+        level = "partial"
+    else:
+        level = "metadata-only"
+    return {
+        "understanding_level": level,
+        "video_downloaded": bool(sample.get("video_file")),
+        "images_downloaded": has_cover,
+        "ocr_text": has_ocr,
+        "asr_transcript": has_transcript,
+        "comments_captured": bool(sample.get("comments")),
+        "reason": "profile card import; full note body/comment/media requires detail link or logged-in browser" if level != "full" else "media text is available",
+    }
+
+
+def benchmark_dir(workspace: Path, platform: str, benchmark_id: str) -> Path:
+    return paths(workspace)["benchmarks"] / platform / safe_slug(benchmark_id, "benchmark")
+
+
 def command_set_account(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace or default_workspace())
     config = load_config(workspace)
@@ -229,6 +372,258 @@ def command_add_benchmark(args: argparse.Namespace) -> int:
     update_onboarding(config, workspace)
     save_config(workspace, config)
     print(json.dumps({"ok": True, "platform": args.platform, "benchmark_account": account, "next_step": config["onboarding"]["current_step"]}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_import_benchmark(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    config = load_config(workspace)
+    if args.platform != "xiaohongshu":
+        raise SystemExit("第一期 import-benchmark 先支持 xiaohongshu。其他平台请先用 collect 导入标准化信号。")
+
+    html = Path(args.html_file).read_text(encoding="utf-8") if args.html_file else fetch_text(args.url)
+    profile = extract_xhs_profile(parse_xhs_initial_state(html))
+    basic = profile.get("basic_info") or {}
+    benchmark_name = args.name or str(basic.get("nickname") or "xiaohongshu-benchmark")
+    benchmark_id = args.benchmark_id or safe_slug(str(basic.get("redId") or basic.get("userId") or benchmark_name), "xhs-benchmark")
+    out_dir = benchmark_dir(workspace, args.platform, benchmark_id)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "profile.html").write_text(html, encoding="utf-8")
+
+    samples: list[dict[str, Any]] = []
+    image_dir = out_dir / "covers"
+    for index, item in enumerate(profile.get("items", []), start=1):
+        sample = {
+            **item,
+            "schema_version": 1,
+            "benchmark_id": benchmark_id,
+            "benchmark_name": benchmark_name,
+            "platform": args.platform,
+            "source": "xiaohongshu_public_profile",
+            "source_url": args.url,
+            "imported_at": now_iso(),
+        }
+        if args.download_covers and item.get("cover_url") and index <= args.cover_limit:
+            image_dir.mkdir(parents=True, exist_ok=True)
+            suffix = Path(urlparse(str(item["cover_url"])).path).suffix or ".webp"
+            cover_path = image_dir / f"cover_{index:02d}{suffix}"
+            try:
+                cover_path.write_bytes(fetch_binary(str(item["cover_url"])))
+                sample["cover_file"] = str(cover_path)
+            except Exception as error:
+                sample["cover_download_error"] = str(error)
+        sample["understanding"] = sample_understanding_status(sample)
+        samples.append(sample)
+
+    profile_payload = {
+        "schema_version": 1,
+        "benchmark_id": benchmark_id,
+        "benchmark_name": benchmark_name,
+        "platform": args.platform,
+        "source_url": args.url,
+        "imported_at": now_iso(),
+        "basic_info": basic,
+        "interactions": profile.get("interactions", []),
+        "tags": profile.get("tags", []),
+        "sample_count": len(samples),
+        "evidence_boundary": "Public profile cards are benchmark candidates. Detail body, comments, full media, OCR, and ASR require detail links or logged-in browser capture.",
+    }
+    write_json(out_dir / "benchmark_profile.json", profile_payload)
+    write_jsonl(out_dir / "benchmark_samples.jsonl", samples)
+
+    for sample in samples:
+        append_jsonl(paths(workspace)["benchmark_samples"], sample)
+        append_jsonl(
+            paths(workspace)["raw_signals"],
+            {
+                "signal_id": f"{benchmark_id}-{sample.get('sample_id')}",
+                "platform": args.platform,
+                "topic": sample.get("title"),
+                "heat": sample.get("liked_count", 0),
+                "evidence_score": 8 if sample.get("understanding", {}).get("understanding_level") == "metadata-only" else 11,
+                "evidence_level": "C" if sample.get("understanding", {}).get("understanding_level") == "metadata-only" else "B",
+                "source": "benchmark_profile_import",
+                "source_path": str(out_dir / "benchmark_samples.jsonl"),
+                "observed_at": now_iso(),
+            },
+        )
+
+    platform_cfg = find_platform(config, args.platform)
+    if platform_cfg is not None:
+        accounts = platform_cfg.setdefault("benchmark_accounts", [])
+        if not any(item.get("account_id") == benchmark_id for item in accounts):
+            accounts.append({"account_id": benchmark_id, "account_name": benchmark_name, "url": args.url, "enabled": True})
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+    normalized = normalize_signals(workspace)
+    print(json.dumps({
+        "ok": True,
+        "benchmark_id": benchmark_id,
+        "profile_path": str(out_dir / "benchmark_profile.json"),
+        "samples_path": str(out_dir / "benchmark_samples.jsonl"),
+        "sample_count": len(samples),
+        "normalized_signal_count": len(normalized),
+        "next_step": "segment-benchmark",
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+def classify_metric_segments(samples: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    ranked = sorted(samples, key=lambda item: int(item.get("liked_count", 0) or 0), reverse=True)
+    compact = [
+        {
+            "sample_id": item.get("sample_id"),
+            "title": item.get("title"),
+            "liked_count": item.get("liked_count", 0),
+            "type": item.get("type"),
+            "understanding_level": item.get("understanding", {}).get("understanding_level", "metadata-only"),
+        }
+        for item in ranked
+    ]
+    return {
+        "highest_likes": compact[:5],
+        "weak_samples": list(reversed(compact[-5:])) if compact else [],
+        "needs_detail_fetch": [item for item in compact if item.get("understanding_level") == "metadata-only"][:10],
+        "high_saves": [],
+        "high_comments": [],
+        "high_shares": [],
+    }
+
+
+def command_segment_benchmark(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    out_dir = benchmark_dir(workspace, args.platform, args.benchmark_id)
+    source = out_dir / "benchmark_samples.jsonl"
+    samples = read_jsonl(source)
+    if not samples:
+        raise SystemExit(f"没有找到对标样本：{source}")
+    segments = {
+        "schema_version": 1,
+        "benchmark_id": args.benchmark_id,
+        "platform": args.platform,
+        "created_at": now_iso(),
+        "sample_count": len(samples),
+        "segments": classify_metric_segments(samples),
+        "evidence_boundary": "Profile-card import currently segments mostly by visible likes. Saves/comments/shares stay empty until detail or logged-in data is imported.",
+    }
+    write_json(out_dir / "performance_segments.json", segments)
+    lines = [
+        f"# 对标样本分层｜{args.benchmark_id}",
+        "",
+        f"生成时间：{segments['created_at']}",
+        "",
+        "## 高点赞样本",
+    ]
+    for item in segments["segments"]["highest_likes"]:
+        lines.append(f"- {item.get('liked_count', 0)}｜{item.get('title')}｜{item.get('understanding_level')}")
+    lines.extend(["", "## 弱样本"])
+    for item in segments["segments"]["weak_samples"]:
+        lines.append(f"- {item.get('liked_count', 0)}｜{item.get('title')}｜{item.get('understanding_level')}")
+    lines.extend(["", "## 需要详情页/登录态补全"])
+    for item in segments["segments"]["needs_detail_fetch"]:
+        lines.append(f"- {item.get('title')}｜{item.get('understanding_level')}")
+    (out_dir / "performance_segments.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(json.dumps({"ok": True, "segments_path": str(out_dir / "performance_segments.json"), "report": str(out_dir / "performance_segments.md")}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def infer_topic_buckets(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rules = [
+        ("教程/方法", ["教程", "方法", "怎么", "步骤", "指南", "入门"]),
+        ("避坑/错误", ["避坑", "错误", "别", "不要", "踩坑"]),
+        ("工具/清单", ["工具", "清单", "模板", "合集", "推荐"]),
+        ("案例/复盘", ["案例", "复盘", "实操", "结果", "经验"]),
+        ("情绪/共鸣", ["焦虑", "普通人", "终于", "不会", "卡住"]),
+    ]
+    buckets: list[dict[str, Any]] = []
+    for name, keywords in rules:
+        matched = [item for item in samples if any(keyword in str(item.get("title") or "") for keyword in keywords)]
+        if matched:
+            buckets.append({"name": name, "count": len(matched), "examples": [item.get("title") for item in matched[:3]]})
+    if not buckets and samples:
+        buckets.append({"name": "待人工命名", "count": len(samples), "examples": [item.get("title") for item in samples[:3]]})
+    return buckets
+
+
+def command_distill_creator(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    out_dir = benchmark_dir(workspace, args.platform, args.benchmark_id)
+    profile = read_json(out_dir / "benchmark_profile.json", {})
+    samples = read_jsonl(out_dir / "benchmark_samples.jsonl")
+    if not samples:
+        raise SystemExit(f"没有找到对标样本：{out_dir / 'benchmark_samples.jsonl'}")
+    segments = read_json(out_dir / "performance_segments.json", {})
+    if not segments:
+        segments = {"segments": classify_metric_segments(samples)}
+        write_json(out_dir / "performance_segments.json", segments)
+    basic = profile.get("basic_info") or {}
+    benchmark_name = profile.get("benchmark_name") or basic.get("nickname") or args.benchmark_id
+    topic_buckets = infer_topic_buckets(samples)
+    high_like_titles = [item.get("title") for item in segments.get("segments", {}).get("highest_likes", [])[:5]]
+    understanding_counts: dict[str, int] = {}
+    for sample in samples:
+        level = sample.get("understanding", {}).get("understanding_level", "metadata-only")
+        understanding_counts[level] = understanding_counts.get(level, 0) + 1
+
+    lines = [
+        f"# Creator Clone: {benchmark_name}",
+        "",
+        "## Source Inventory",
+        f"- platform: {args.platform}",
+        f"- benchmark_id: {args.benchmark_id}",
+        f"- sample_count: {len(samples)}",
+        f"- understanding: {json.dumps(understanding_counts, ensure_ascii=False)}",
+        "",
+        "## Positioning",
+        f"- nickname: {basic.get('nickname') or benchmark_name}",
+        f"- description: {basic.get('desc') or basic.get('description') or '待补充信息'}",
+        "- evidence boundary: profile-card import cannot prove full script, comment demand, or conversion mechanism.",
+        "",
+        "## Topic Buckets",
+    ]
+    for bucket in topic_buckets:
+        lines.append(f"- {bucket['name']}｜{bucket['count']} 条｜例：{' / '.join(str(x) for x in bucket['examples'])}")
+    lines.extend(["", "## Performance Segmentation", "### Highest Likes"])
+    for title in high_like_titles:
+        lines.append(f"- {title}")
+    lines.extend(
+        [
+            "",
+            "## Transferable Templates",
+            "1. Searchable problem -> concrete step list -> low-pressure save/comment action.",
+            "2. User stuck point -> mistake correction -> proof needed before conversion.",
+            "3. Tool or workflow promise -> small task -> completion standard.",
+            "",
+            "## Anti-Patterns",
+            "- Do not copy exact wording, personal identity, images, screenshots, claims, or creator story.",
+            "- Do not treat metadata-only samples as fully understood.",
+            "- Do not infer comments, saves, shares, or conversion without captured evidence.",
+            "",
+            "## Self-Check Rubric",
+            "- Does the topic map to one bucket?",
+            "- Is the hook concrete enough for the target user?",
+            "- Is proof required and available?",
+            "- Is the next action low pressure?",
+            "- Are source limitations still visible?",
+            "",
+            "## Next Candidate Ideas",
+        ]
+    )
+    for bucket in topic_buckets[:5]:
+        lines.append(f"- 用「{bucket['name']}」做一条适配自己账号的原创内容，先选一个可验证的小任务。")
+    clone_path = out_dir / "creator_clone.md"
+    clone_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    append_jsonl(
+        paths(workspace)["pending"],
+        {
+            "candidate_id": f"creator-clone-{args.benchmark_id}-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "created_at": now_iso(),
+            "applies_to": [args.platform],
+            "rule": f"参考 {benchmark_name} 的对标蒸馏时，只迁移选题桶和结构规则，不复制原文、身份、素材或未经验证的成绩。",
+            "evidence": str(clone_path),
+        },
+    )
+    print(json.dumps({"ok": True, "clone_path": str(clone_path), "topic_bucket_count": len(topic_buckets)}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -284,6 +679,7 @@ def command_init(args: argparse.Namespace) -> int:
     ps["signals"].write_text("", encoding="utf-8")
     ps["reminders"].write_text("", encoding="utf-8")
     ps["pending"].write_text("", encoding="utf-8")
+    ps["benchmark_samples"].write_text("", encoding="utf-8")
     write_json(
         ps["active"],
         {
@@ -987,6 +1383,26 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--signal-json", default="")
     collect.add_argument("--file", default="")
     collect.set_defaults(func=command_collect)
+
+    importer = sub.add_parser("import-benchmark", help="导入对标账号公开样本，第一期支持小红书主页")
+    importer.add_argument("--platform", required=True)
+    importer.add_argument("--url", default="")
+    importer.add_argument("--html-file", default="", help="For tests or manually saved Xiaohongshu profile HTML")
+    importer.add_argument("--benchmark-id", default="")
+    importer.add_argument("--name", default="")
+    importer.add_argument("--download-covers", action="store_true")
+    importer.add_argument("--cover-limit", type=int, default=30)
+    importer.set_defaults(func=command_import_benchmark)
+
+    segment = sub.add_parser("segment-benchmark", help="按可见指标分层对标样本")
+    segment.add_argument("--platform", default="xiaohongshu")
+    segment.add_argument("--benchmark-id", required=True)
+    segment.set_defaults(func=command_segment_benchmark)
+
+    distill = sub.add_parser("distill-creator", help="从对标样本生成 creator_clone.md")
+    distill.add_argument("--platform", default="xiaohongshu")
+    distill.add_argument("--benchmark-id", required=True)
+    distill.set_defaults(func=command_distill_creator)
 
     daily = sub.add_parser("daily-run", help="严格执行采集、读取、评分、复盘提醒和自成长")
     daily.set_defaults(func=command_daily_run)

@@ -105,6 +105,55 @@ class WorkflowSmokeTest(unittest.TestCase):
             self.assertEqual(result["verdict"], "小改后发布")
             self.assertIn("小红书标题空泛词：宝藏", result["risks"])
 
+    def test_import_segment_and_distill_xiaohongshu_benchmark(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            state = {
+                "user": {
+                    "userPageData": {
+                        "basicInfo": {"nickname": "测试对标号", "redId": "bench001", "desc": "AI 工具教程"},
+                        "interactions": [{"type": "fans", "count": "1000"}],
+                        "tags": ["AI", "教程"],
+                    },
+                    "notes": [[
+                        {"index": 1, "noteCard": {"noteId": "n1", "type": "normal", "displayTitle": "AI工具教程入门", "interactInfo": {"likedCount": 120}, "user": {"nickname": "测试对标号", "userId": "u1"}, "cover": {"urlDefault": "https://example.com/1.webp"}}},
+                        {"index": 2, "noteCard": {"noteId": "n2", "type": "normal", "displayTitle": "普通人AI避坑清单", "interactInfo": {"likedCount": 38}, "user": {"nickname": "测试对标号", "userId": "u1"}, "cover": {"urlDefault": "https://example.com/2.webp"}}},
+                        {"index": 3, "noteCard": {"noteId": "n3", "type": "video", "displayTitle": "WorkBuddy实操案例", "interactInfo": {"likedCount": 210}, "user": {"nickname": "测试对标号", "userId": "u1"}, "cover": {"urlDefault": "https://example.com/3.webp"}}},
+                    ]],
+                }
+            }
+            html = workspace / "xhs_profile.html"
+            html.write_text(f"<html><script>window.__INITIAL_STATE__={json.dumps(state, ensure_ascii=False)}</script></html>", encoding="utf-8")
+
+            imported = json.loads(run_cli(
+                workspace,
+                "import-benchmark",
+                "--platform",
+                "xiaohongshu",
+                "--url",
+                "https://www.xiaohongshu.com/user/profile/bench001",
+                "--html-file",
+                str(html),
+            ).stdout)
+            self.assertEqual(imported["sample_count"], 3)
+            self.assertTrue(Path(imported["samples_path"]).exists())
+            self.assertTrue((workspace / "data" / "benchmark_samples.jsonl").exists())
+            samples = (workspace / "data" / "benchmark_samples.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(samples), 3)
+            first = json.loads(samples[0])
+            self.assertEqual(first["understanding"]["understanding_level"], "metadata-only")
+
+            segmented = json.loads(run_cli(workspace, "segment-benchmark", "--benchmark-id", "bench001").stdout)
+            self.assertTrue(Path(segmented["report"]).exists())
+
+            distilled = json.loads(run_cli(workspace, "distill-creator", "--benchmark-id", "bench001").stdout)
+            clone = Path(distilled["clone_path"])
+            self.assertTrue(clone.exists())
+            clone_text = clone.read_text(encoding="utf-8")
+            self.assertIn("Creator Clone: 测试对标号", clone_text)
+            self.assertIn("Topic Buckets", clone_text)
+
 
 if __name__ == "__main__":
     unittest.main()
