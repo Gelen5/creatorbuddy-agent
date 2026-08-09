@@ -43,6 +43,8 @@ Xiaohongshu-specific drafts also include a sanitized playbook for profile clarit
 
 Benchmark distillation is available for Xiaohongshu public profile cards: import a benchmark profile, segment visible samples, then generate a `creator_clone.md`. See [`docs/benchmark-distillation.md`](docs/benchmark-distillation.md).
 
+Platform Data Intake v1 supports owned account imports, Xiaohongshu benchmark note details, WeChat article imports, and Web-configured collection tasks. See [`docs/platform-data-intake-v1.md`](docs/platform-data-intake-v1.md).
+
 WeChat Official Account publishing is available through the `wechat-publisher` adapter. CreatorBuddy generates a copy-preview HTML by default; optional draft-box publishing requires a configured certified WeChat Official Account. See [`docs/wechat-publisher-adapter.md`](docs/wechat-publisher-adapter.md).
 
 ```powershell
@@ -52,6 +54,9 @@ python scripts\creatorbuddy.py set-profile --platform xiaohongshu --positioning 
 python scripts\creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"
 python scripts\creatorbuddy.py add-content --platform xiaohongshu --title "第一条内容" --body "正文或脚本" --metrics-json "{\"likes\":0}"
 python scripts\creatorbuddy.py import-benchmark --platform xiaohongshu --url "https://www.xiaohongshu.com/user/profile/..."
+python scripts\creatorbuddy.py collect-platform --platform xiaohongshu --kind owned --json "[{\"content_id\":\"xhs-001\",\"title\":\"AI工具教程\",\"likes\":10}]"
+python scripts\creatorbuddy.py collect-platform --platform xiaohongshu --kind xhs-note --file note.html
+python scripts\creatorbuddy.py collect-platform --platform wechat-mp --kind wechat-article --file article.html --owned
 python scripts\creatorbuddy.py segment-benchmark --benchmark-id "benchmark-id"
 python scripts\creatorbuddy.py distill-creator --benchmark-id "benchmark-id"
 python scripts\creatorbuddy.py onboarding-status

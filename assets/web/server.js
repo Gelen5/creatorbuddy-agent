@@ -279,9 +279,31 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/collect") {
-    return sendJson(res, 501, {
-      ok: false,
-      error: "内测版暂未内置平台登录态采集。请先用 today / draft / precheck / review 跑通本地工作流。"
+    const body = await parseBody(req);
+    const args = ["collect-platform"];
+    appendArg(args, "--platform", body.platform || "xiaohongshu");
+    appendArg(args, "--kind", body.kind || "owned");
+    appendArg(args, "--file", body.file);
+    appendArg(args, "--url", body.url);
+    appendArg(args, "--json", body.json);
+    appendArg(args, "--content-id", body.contentId);
+    appendArg(args, "--benchmark-id", body.benchmarkId);
+    appendArg(args, "--benchmark-name", body.benchmarkName);
+    if (body.owned) args.push("--owned");
+    const result = await runAgent(args, 180000);
+    let payload = null;
+    try {
+      payload = JSON.parse(result.stdout);
+    } catch {
+      payload = null;
+    }
+    return sendJson(res, result.ok ? 200 : 500, {
+      ok: result.ok,
+      code: result.code,
+      collect: payload,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      dashboard: result.ok ? await readDashboard() : null
     });
   }
 

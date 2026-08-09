@@ -150,6 +150,7 @@ def paths(workspace: Path) -> dict[str, Path]:
         "runs": data / "run_log.jsonl",
         "reminders": data / "review_reminders.jsonl",
         "benchmark_samples": data / "benchmark_samples.jsonl",
+        "platform_raw": data / "platform_raw_records.jsonl",
         "benchmarks": data / "benchmarks",
         "reports": workspace / "reports",
         "drafts": workspace / "drafts",
@@ -825,6 +826,7 @@ def initialize_workspace(workspace: Path, workspace_id: str = "", owner: str = "
     ps["reminders"].write_text("", encoding="utf-8")
     ps["pending"].write_text("", encoding="utf-8")
     ps["benchmark_samples"].write_text("", encoding="utf-8")
+    ps["platform_raw"].write_text("", encoding="utf-8")
     write_json(
         ps["active"],
         {
@@ -1352,6 +1354,335 @@ def command_collect(args: argparse.Namespace) -> int:
         "platforms": [item.get("platform") for item in config.get("platforms", []) if item.get("enabled", True)],
         "normalized_count": len(normalized),
         "note": "未提供外部适配器输入时不伪造平台数据；当前评分会明确使用 config_seed。",
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+def parse_rows_text(text: str) -> list[dict[str, Any]]:
+    text = text.strip()
+    if not text:
+        return []
+    try:
+        payload = json.loads(text)
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        if isinstance(payload, dict):
+            for key in ["items", "rows", "data", "contents", "articles", "notes"]:
+                if isinstance(payload.get(key), list):
+                    return [item for item in payload[key] if isinstance(item, dict)]
+            return [payload]
+    except json.JSONDecodeError:
+        pass
+    rows: list[dict[str, Any]] = []
+    lines = [line for line in text.splitlines() if line.strip()]
+    if lines and lines[0].count(",") >= 1:
+        import csv
+        from io import StringIO
+
+        reader = csv.DictReader(StringIO(text))
+        rows = [dict(row) for row in reader]
+        if rows:
+            return rows
+    for line in lines:
+        try:
+            item = json.loads(line)
+            if isinstance(item, dict):
+                rows.append(item)
+        except json.JSONDecodeError:
+            continue
+    return rows
+
+
+def load_collect_input(args: argparse.Namespace) -> tuple[str, str]:
+    if args.json:
+        return args.json, "inline_json"
+    if args.file:
+        source = Path(args.file)
+        if not source.exists():
+            raise SystemExit(f"采集文件不存在：{source}")
+        return source.read_text(encoding="utf-8"), str(source)
+    if args.url:
+        return fetch_text(args.url), args.url
+    raise SystemExit("缺少采集输入：请提供 --file、--url 或 --json")
+
+
+def as_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(float(str(value).replace(",", "").strip()))
+    except Exception:
+        return default
+
+
+def metric_heat(metrics: dict[str, Any]) -> int:
+    return min(25, as_int(metrics.get("likes")) + as_int(metrics.get("saves")) * 2 + as_int(metrics.get("comments")) * 2)
+
+
+def normalize_owned_content_row(row: dict[str, Any], platform: str, source: str) -> dict[str, Any]:
+    metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
+    for key in ["views", "reads", "plays", "likes", "saves", "collects", "comments", "shares", "followers", "dm_count", "inquiries"]:
+        if key in row and key not in metrics:
+            metrics[key] = as_int(row.get(key), 0)
+    title = str(row.get("title") or row.get("name") or row.get("topic") or "untitled").strip()
+    content_id = str(row.get("content_id") or row.get("id") or f"{platform}-{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
+    return {
+        "schema_version": 1,
+        "content_id": content_id,
+        "platform": platform,
+        "status": row.get("status") or "published",
+        "topic": row.get("topic") or title,
+        "title": title,
+        "cover": row.get("cover") or row.get("cover_url") or "",
+        "body": row.get("body") or row.get("content") or row.get("text") or "",
+        "script": row.get("script") or row.get("transcript") or "",
+        "proof_assets": row.get("proof_assets") if isinstance(row.get("proof_assets"), list) else split_csv(str(row.get("proof_assets") or "")),
+        "product_bridge": row.get("product_bridge") or "",
+        "published_at": row.get("published_at") or row.get("publish_time") or "",
+        "metrics": metrics,
+        "comments": row.get("comments") if isinstance(row.get("comments"), list) else [],
+        "conversions": row.get("conversions") if isinstance(row.get("conversions"), dict) else {},
+        "review": row.get("review") or "",
+        "next_change": row.get("next_change") or "",
+        "lessons": row.get("lessons") if isinstance(row.get("lessons"), list) else split_csv(str(row.get("lessons") or "")),
+        "source": source,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+
+
+def strip_html_text(html_text: str) -> str:
+    text = re.sub(r"(?is)<script.*?</script>|<style.*?</style>", " ", html_text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def html_meta(html_text: str, *names: str) -> str:
+    for name in names:
+        patterns = [
+            rf'<meta[^>]+(?:property|name)=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{re.escape(name)}["\']',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html_text, flags=re.I)
+            if match:
+                return html.unescape(match.group(1)).strip()
+    return ""
+
+
+def parse_wechat_article_html(html_text: str, source_url: str = "") -> dict[str, Any]:
+    title = html_meta(html_text, "og:title", "twitter:title")
+    if not title:
+        match = re.search(r"(?is)<title[^>]*>(.*?)</title>", html_text)
+        title = html.unescape(match.group(1)).strip() if match else "wechat article"
+    description = html_meta(html_text, "description", "og:description")
+    text = strip_html_text(html_text)
+    return {
+        "title": re.sub(r"\s+", " ", title).strip(),
+        "body": text[:12000],
+        "description": description,
+        "source_url": source_url,
+        "understanding": {
+            "understanding_level": "full" if len(text) > 200 else "partial",
+            "reason": "article html parsed from provided url/file",
+        },
+    }
+
+
+def iter_dicts(value: Any):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from iter_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from iter_dicts(child)
+
+
+def parse_xhs_note_detail(text: str, source_url: str = "") -> dict[str, Any]:
+    data: Any
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        data = parse_xhs_initial_state(text)
+    best: dict[str, Any] = {}
+    for item in iter_dicts(data):
+        title = item.get("displayTitle") or item.get("title") or item.get("desc")
+        note_id = item.get("noteId") or item.get("note_id") or item.get("id")
+        if title and (note_id or item.get("interactInfo") or item.get("likedCount")):
+            best = item
+            break
+    if not best:
+        raise SystemExit("没有在小红书详情输入中找到 note 信息；请提供详情页 HTML 或结构化 JSON")
+    interact = best.get("interactInfo") if isinstance(best.get("interactInfo"), dict) else best
+    title = str(best.get("displayTitle") or best.get("title") or best.get("desc") or "xiaohongshu note").strip()
+    desc = str(best.get("desc") or best.get("content") or best.get("noteContent") or "").strip()
+    note_id = str(best.get("noteId") or best.get("note_id") or best.get("id") or safe_slug(title, "xhs-note"))
+    liked = as_int(interact.get("likedCount") or interact.get("likeCount") or interact.get("likes"))
+    collected = as_int(interact.get("collectedCount") or interact.get("collectCount") or interact.get("saves") or interact.get("collects"))
+    comments = as_int(interact.get("commentCount") or interact.get("comments"))
+    shares = as_int(interact.get("shareCount") or interact.get("shares"))
+    return {
+        "sample_id": note_id,
+        "note_id": note_id,
+        "platform": "xiaohongshu",
+        "title": title,
+        "body": desc,
+        "liked_count": liked,
+        "metrics": {"likes": liked, "saves": collected, "comments": comments, "shares": shares},
+        "source_url": source_url,
+        "understanding": {
+            "understanding_level": "full" if desc else "partial",
+            "comments_captured": bool(comments),
+            "reason": "note detail parsed from provided url/file/json",
+        },
+    }
+
+
+def command_collect_platform(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    config = load_config(workspace)
+    ps = paths(workspace)
+    text, source_ref = load_collect_input(args)
+    imported = 0
+    content_ids: list[str] = []
+    sample_ids: list[str] = []
+    signal_topics: list[str] = []
+    raw_record = {
+        "schema_version": 1,
+        "platform": args.platform,
+        "kind": args.kind,
+        "source_ref": source_ref,
+        "collected_at": now_iso(),
+        "evidence_boundary": "",
+    }
+
+    if args.kind == "owned":
+        rows = parse_rows_text(text)
+        if not rows:
+            raise SystemExit("没有解析到自有账号数据；请提供 JSON/JSONL/CSV")
+        for row in rows:
+            content = normalize_owned_content_row(row, args.platform, f"{args.platform}_owned_import")
+            append_jsonl(ps["content"], content)
+            append_jsonl(ps["raw_signals"], {
+                "signal_id": f"owned-{content['content_id']}",
+                "platform": args.platform,
+                "topic": content["topic"],
+                "heat": metric_heat(content.get("metrics", {})),
+                "evidence_score": 14,
+                "evidence_level": "A",
+                "source": "owned_account_import",
+                "source_path": source_ref,
+                "observed_at": now_iso(),
+            })
+            content_ids.append(content["content_id"])
+            signal_topics.append(content["topic"])
+            imported += 1
+        raw_record["evidence_boundary"] = "Owned account data imported from user-provided export or adapter output."
+
+    elif args.kind == "xhs-note":
+        note = parse_xhs_note_detail(text, args.url or source_ref)
+        sample = {
+            **note,
+            "schema_version": 1,
+            "benchmark_id": args.benchmark_id or "detail-notes",
+            "benchmark_name": args.benchmark_name or args.benchmark_id or "detail-notes",
+            "source": "xiaohongshu_note_detail",
+            "imported_at": now_iso(),
+        }
+        append_jsonl(ps["benchmark_samples"], sample)
+        append_jsonl(ps["raw_signals"], {
+            "signal_id": f"xhs-detail-{sample['sample_id']}",
+            "platform": "xiaohongshu",
+            "topic": sample["title"],
+            "heat": metric_heat(sample.get("metrics", {})),
+            "evidence_score": 13 if sample.get("body") else 10,
+            "evidence_level": "B" if sample.get("body") else "C",
+            "source": "xiaohongshu_note_detail",
+            "source_path": source_ref,
+            "observed_at": now_iso(),
+        })
+        sample_ids.append(sample["sample_id"])
+        signal_topics.append(sample["title"])
+        imported = 1
+        raw_record["evidence_boundary"] = "Public note detail is a benchmark sample, not owned backend data."
+
+    elif args.kind == "wechat-article":
+        article = parse_wechat_article_html(text, args.url or source_ref)
+        signal = {
+            "signal_id": f"wechat-article-{safe_slug(article['title'], 'article')}",
+            "platform": "wechat-mp",
+            "topic": article["title"],
+            "heat": 8,
+            "evidence_score": 12,
+            "evidence_level": "B",
+            "source": "wechat_article_import",
+            "source_path": source_ref,
+            "observed_at": now_iso(),
+        }
+        append_jsonl(ps["raw_signals"], signal)
+        signal_topics.append(article["title"])
+        if args.owned:
+            content = normalize_owned_content_row({
+                "content_id": args.content_id or signal["signal_id"],
+                "title": article["title"],
+                "body": article["body"],
+                "topic": article["title"],
+                "status": "published",
+            }, "wechat-mp", "wechat_article_owned_import")
+            append_jsonl(ps["content"], content)
+            content_ids.append(content["content_id"])
+        else:
+            append_jsonl(ps["benchmark_samples"], {
+                "schema_version": 1,
+                "sample_id": signal["signal_id"],
+                "platform": "wechat-mp",
+                "title": article["title"],
+                "body": article["body"],
+                "source": "wechat_article_public_sample",
+                "source_url": article["source_url"],
+                "understanding": article["understanding"],
+                "imported_at": now_iso(),
+            })
+            sample_ids.append(signal["signal_id"])
+        imported = 1
+        raw_record["evidence_boundary"] = "WeChat article content is parsed from provided article HTML/url; backend metrics require owned export."
+    else:
+        raise SystemExit(f"不支持的采集类型：{args.kind}")
+
+    raw_record.update({"imported_count": imported, "content_ids": content_ids, "sample_ids": sample_ids})
+    append_jsonl(ps["platform_raw"], raw_record)
+    normalized = normalize_signals(workspace)
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+
+    report = ps["reports"] / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{args.platform}-{args.kind}-collect.md"
+    lines = [
+        "# Platform Collect Report",
+        "",
+        f"- platform: {args.platform}",
+        f"- kind: {args.kind}",
+        f"- source: {source_ref}",
+        f"- imported_count: {imported}",
+        f"- content_ids: {', '.join(content_ids) if content_ids else 'none'}",
+        f"- sample_ids: {', '.join(sample_ids) if sample_ids else 'none'}",
+        f"- normalized_signal_count: {len(normalized)}",
+        f"- evidence_boundary: {raw_record['evidence_boundary']}",
+    ]
+    report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(json.dumps({
+        "ok": True,
+        "platform": args.platform,
+        "kind": args.kind,
+        "imported_count": imported,
+        "content_ids": content_ids,
+        "sample_ids": sample_ids,
+        "signal_topics": signal_topics,
+        "normalized_signal_count": len(normalized),
+        "raw_path": str(ps["platform_raw"]),
+        "report": str(report),
+        "evidence_boundary": raw_record["evidence_boundary"],
     }, ensure_ascii=False, indent=2))
     return 0
 
@@ -2373,6 +2704,18 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--signal-json", default="")
     collect.add_argument("--file", default="")
     collect.set_defaults(func=command_collect)
+
+    platform_collect = sub.add_parser("collect-platform", help="平台数据接入 v1：自有账号导入、小红书详情、公众号文章")
+    platform_collect.add_argument("--platform", required=True, choices=["xiaohongshu", "wechat-mp", "douyin", "wechat-channels"])
+    platform_collect.add_argument("--kind", required=True, choices=["owned", "xhs-note", "wechat-article"])
+    platform_collect.add_argument("--file", default="")
+    platform_collect.add_argument("--url", default="")
+    platform_collect.add_argument("--json", default="")
+    platform_collect.add_argument("--owned", action="store_true", help="用于 wechat-article：作为自有已发布文章写入内容库")
+    platform_collect.add_argument("--content-id", default="")
+    platform_collect.add_argument("--benchmark-id", default="")
+    platform_collect.add_argument("--benchmark-name", default="")
+    platform_collect.set_defaults(func=command_collect_platform)
 
     importer = sub.add_parser("import-benchmark", help="导入对标账号公开样本，第一期支持小红书主页")
     importer.add_argument("--platform", required=True)

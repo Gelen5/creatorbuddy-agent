@@ -3,7 +3,8 @@ const state = {
   section: "home",
   draft: null,
   publisher: null,
-  quickstartResult: null
+  quickstartResult: null,
+  collectResult: null
 };
 
 const platformName = {
@@ -188,6 +189,39 @@ async function submitQuickstart(event) {
   }
 }
 
+async function submitCollect(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type='submit']");
+  const payload = {
+    platform: formValue(form, "collectPlatform"),
+    kind: formValue(form, "collectKind"),
+    url: formValue(form, "collectUrl"),
+    file: formValue(form, "collectFile"),
+    json: formValue(form, "collectJson"),
+    benchmarkId: formValue(form, "collectBenchmarkId"),
+    benchmarkName: formValue(form, "collectBenchmarkName"),
+    owned: new FormData(form).get("collectOwned") === "on"
+  };
+  button.disabled = true;
+  button.textContent = "采集中";
+  try {
+    toast("正在接入平台数据...");
+    const result = await api("/api/collect", { method: "POST", body: payload });
+    state.collectResult = result.collect;
+    state.dashboard = result.dashboard || (await api("/api/dashboard"));
+    renderShell(state.dashboard);
+    renderRecommendation(state.dashboard);
+    renderEvidence(state.dashboard.evidence || []);
+    renderStatus(state.dashboard.platformStatus || []);
+    renderCurrentSection();
+    toast("平台数据已接入并标准化。");
+  } finally {
+    button.disabled = false;
+    button.textContent = "开始接入";
+  }
+}
+
 async function precheckSample() {
   const item = state.dashboard?.recommendation;
   if (!item) {
@@ -366,6 +400,7 @@ function renderAccountPage(data) {
   const productKeywords = data.config?.product_keywords || [];
   const primaryPlatform = platforms.find((item) => item.account_name || item.positioning) || platforms[0] || {};
   const quickstartOutcome = renderQuickstartOutcome(state.quickstartResult);
+  const collectOutcome = renderCollectOutcome(state.collectResult);
   return `
     <form class="quickstart-form" id="quickstartForm">
       <div class="form-head">
@@ -437,6 +472,56 @@ function renderAccountPage(data) {
       </div>
     </form>
     ${quickstartOutcome}
+    <form class="collect-form" id="collectForm">
+      <div class="form-head">
+        <div>
+          <div class="muted-label">数据接入 v1</div>
+          <h2>接入自有数据 / 对标详情 / 公众号文章</h2>
+        </div>
+        <button class="primary-button" type="submit">开始接入</button>
+      </div>
+      <div class="form-grid">
+        <label>
+          <span>平台</span>
+          <select name="collectPlatform">
+            ${renderPlatformOptions(primaryPlatform.platform || "xiaohongshu")}
+          </select>
+        </label>
+        <label>
+          <span>采集类型</span>
+          <select name="collectKind">
+            <option value="owned">自有账号数据导入</option>
+            <option value="xhs-note">小红书对标笔记详情</option>
+            <option value="wechat-article">公众号文章</option>
+          </select>
+        </label>
+        <label>
+          <span>URL</span>
+          <input name="collectUrl" placeholder="可选：文章/笔记链接" />
+        </label>
+        <label>
+          <span>本地文件</span>
+          <input name="collectFile" placeholder="可选：JSON / CSV / HTML 文件路径" />
+        </label>
+        <label>
+          <span>对标 ID</span>
+          <input name="collectBenchmarkId" placeholder="可选：benchmark-id" />
+        </label>
+        <label>
+          <span>对标名称</span>
+          <input name="collectBenchmarkName" placeholder="可选：对标账号名称" />
+        </label>
+        <label class="wide">
+          <span>JSON 数据</span>
+          <textarea name="collectJson" placeholder='可选：粘贴 [{"title":"...","likes":10}] 或小红书/公众号结构化数据'></textarea>
+        </label>
+        <label class="check-row wide">
+          <input type="checkbox" name="collectOwned" />
+          <span>公众号文章作为自有已发布内容入库</span>
+        </label>
+      </div>
+    </form>
+    ${collectOutcome}
     <div class="detail-grid">
       <div class="detail-block">
         <div class="muted-label">我是谁</div>
@@ -466,6 +551,23 @@ function renderAccountPage(data) {
           `;
         })
         .join("")}
+    </div>
+  `;
+}
+
+function renderCollectOutcome(result) {
+  if (!result) return "";
+  return `
+    <div class="quickstart-outcome">
+      <div>
+        <div class="muted-label">数据接入完成</div>
+        <h2>${escapeHtml(result.platform || "")} / ${escapeHtml(result.kind || "")}</h2>
+        <p>导入 ${Number(result.imported_count || 0)} 条，标准化信号 ${Number(result.normalized_signal_count || 0)} 条。</p>
+      </div>
+      <div class="outcome-links">
+        ${result.report ? `<a class="secondary-button" href="${escapeAttr(toWorkspaceFileUrl(result.report))}" target="_blank" rel="noreferrer">打开采集报告</a>` : ""}
+        <button class="primary-button" type="button" onclick="window.creatorBuddyRunDaily()">生成今日机会</button>
+      </div>
     </div>
   `;
 }
@@ -635,12 +737,16 @@ function bindEvents() {
     if (event.target?.id === "quickstartForm") {
       submitQuickstart(event).catch((error) => toast(error.message));
     }
+    if (event.target?.id === "collectForm") {
+      submitCollect(event).catch((error) => toast(error.message));
+    }
   });
 }
 
 window.creatorBuddyCreateDraft = () => createDraft().catch((error) => toast(error.message));
 window.creatorBuddyPrecheck = () => precheckSample().catch((error) => toast(error.message));
 window.creatorBuddyWechatPreview = () => createWechatPreview().catch((error) => toast(error.message));
+window.creatorBuddyRunDaily = () => runDaily().catch((error) => toast(error.message));
 
 bindEvents();
 loadDashboard().catch((error) => toast(error.message));

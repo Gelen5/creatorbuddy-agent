@@ -462,6 +462,87 @@ class WorkflowSmokeTest(unittest.TestCase):
             self.assertTrue(audit["ok"])
             self.assertTrue(all(item["status"] == "complete" for item in audit["items"].values()))
 
+    def test_collect_platform_owned_xhs_data_writes_content_and_signals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            run_cli(workspace, "set-account", "--platform", "xiaohongshu", "--account-id", "own-1", "--account-name", "test")
+            payload = json.dumps([{
+                "content_id": "owned-xhs-1",
+                "title": "AI工具教程",
+                "body": "正文",
+                "likes": 10,
+                "saves": 4,
+                "comments": 2,
+                "conversions": {"inquiries": 1},
+            }], ensure_ascii=False)
+            result = json.loads(run_cli(workspace, "collect-platform", "--platform", "xiaohongshu", "--kind", "owned", "--json", payload).stdout)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["imported_count"], 1)
+            rows = [json.loads(line) for line in (workspace / "data" / "published_content.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(rows[-1]["content_id"], "owned-xhs-1")
+            self.assertTrue((workspace / "data" / "platform_raw_records.jsonl").exists())
+            self.assertGreaterEqual(result["normalized_signal_count"], 1)
+
+    def test_collect_platform_xhs_note_detail_imports_benchmark_sample(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            note = {
+                "noteId": "note-1",
+                "displayTitle": "WorkBuddy实操案例",
+                "desc": "这是正文详情",
+                "interactInfo": {"likedCount": 120, "collectedCount": 30, "commentCount": 8, "shareCount": 2},
+            }
+            result = json.loads(run_cli(
+                workspace,
+                "collect-platform",
+                "--platform",
+                "xiaohongshu",
+                "--kind",
+                "xhs-note",
+                "--benchmark-id",
+                "bench-detail",
+                "--json",
+                json.dumps(note, ensure_ascii=False),
+            ).stdout)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["sample_ids"], ["note-1"])
+            samples = [json.loads(line) for line in (workspace / "data" / "benchmark_samples.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(samples[-1]["source"], "xiaohongshu_note_detail")
+            self.assertEqual(samples[-1]["understanding"]["understanding_level"], "full")
+
+    def test_collect_platform_wechat_article_imports_public_or_owned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            article = workspace / "article.html"
+            article.write_text(
+                '<html><head><meta property="og:title" content="公众号AI文章"><meta name="description" content="摘要"></head>'
+                '<body><article><p>这是公众号文章正文，用于测试文章采集和标准化。</p></article></body></html>',
+                encoding="utf-8",
+            )
+            public_result = json.loads(run_cli(workspace, "collect-platform", "--platform", "wechat-mp", "--kind", "wechat-article", "--file", str(article)).stdout)
+            self.assertTrue(public_result["ok"])
+            self.assertTrue(public_result["sample_ids"])
+            owned_result = json.loads(run_cli(
+                workspace,
+                "collect-platform",
+                "--platform",
+                "wechat-mp",
+                "--kind",
+                "wechat-article",
+                "--file",
+                str(article),
+                "--owned",
+                "--content-id",
+                "wx-owned-1",
+            ).stdout)
+            self.assertEqual(owned_result["content_ids"], ["wx-owned-1"])
+            rows = [json.loads(line) for line in (workspace / "data" / "published_content.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(rows[-1]["platform"], "wechat-mp")
+            self.assertEqual(rows[-1]["source"], "wechat_article_owned_import")
+
 
 if __name__ == "__main__":
     unittest.main()

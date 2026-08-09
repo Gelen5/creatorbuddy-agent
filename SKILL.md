@@ -79,6 +79,18 @@ Evidence boundary:
 - body text, comments, full carousel media, OCR, ASR, saves, shares, and conversion require detail links, logged-in capture, or manual imports;
 - never copy exact wording, identity, images, screenshots, claims, or creator stories.
 
+## Platform Data Intake v1
+
+Use `collect-platform` when the user wants owned-account imports, Xiaohongshu benchmark note details, WeChat article imports, or Web-configured collection tasks.
+
+```powershell
+python scripts/creatorbuddy.py collect-platform --platform xiaohongshu --kind owned --json '[{"content_id":"xhs-001","title":"AI工具教程","likes":10}]'
+python scripts/creatorbuddy.py collect-platform --platform xiaohongshu --kind xhs-note --file note.html
+python scripts/creatorbuddy.py collect-platform --platform wechat-mp --kind wechat-article --file article.html --owned
+```
+
+This layer writes into the existing content library, benchmark sample library, raw signals, normalized signals, raw platform records, and collection reports. It does not bypass platform login or private APIs. See `docs/platform-data-intake-v1.md`.
+
 ## WeChat Publisher Adapter
 
 CreatorBuddy can route WeChat Official Account publishing work to `wechat-publisher` without turning publisher into the growth brain.

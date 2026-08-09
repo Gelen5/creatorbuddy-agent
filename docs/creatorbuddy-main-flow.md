@@ -7,6 +7,7 @@ This document is the productized main path for inner-test users. Keep this path 
 ```text
 quickstart
   -> run-daily
+  -> collect-platform when new owned/public data is available
   -> draft
   -> precheck
   -> publish / add-content
@@ -22,6 +23,7 @@ quickstart
 | Setup account | Tell CreatorBuddy who I am and what I sell | `quickstart` | `config/agent_config.json` |
 | First value | See the first content opportunity and draft | `quickstart` | `reports/*first-run-opportunity.md`, `drafts/*first-draft.json` |
 | Daily decision | Decide what to make today | `run-daily` | `data/latest_topic_scores.json`, `data/run_log.jsonl` |
+| Data intake | Import owned metrics, benchmark details, or articles | `collect-platform` | `data/platform_raw_records.jsonl`, content/signals/sample libraries |
 | Create content | Turn one opportunity into a platform brief | `draft` | `drafts/*.json` |
 | Safety gate | Check title, body, evidence, platform risk | `precheck` | `reports/*precheck.md` |
 | Publish record | Store draft/published asset and metrics | `add-content`, `wechat-publish`, or `review` | `data/published_content.jsonl` |
@@ -36,6 +38,7 @@ For normal users, expose only:
 - `run-daily`
 - `draft`
 - `precheck`
+- `collect-platform` through guided Web/API forms
 - `wechat-publish` when platform is WeChat Official Account
 - `add-content` / `review`
 
@@ -61,6 +64,7 @@ The visible Web path should be:
 Account Center form
   -> /api/quickstart
   -> show first report and first draft
+  -> /api/collect when the user has backend export, article html, note detail, or adapter JSON
   -> /api/daily-run
   -> /api/draft
   -> /api/prepublish
