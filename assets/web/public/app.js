@@ -144,12 +144,6 @@ async function runDaily() {
   await loadDashboard();
 }
 
-async function refreshScores() {
-  toast("正在刷新选题评分...");
-  const result = await api("/api/score-topics", { method: "POST", body: {} });
-  toast(result.ok ? "选题评分已刷新。" : "选题评分刷新失败。");
-  await loadDashboard();
-}
 
 function formValue(form, name) {
   return String(new FormData(form).get(name) || "").trim();
@@ -626,7 +620,6 @@ function emptyPage(text) {
 
 function bindEvents() {
   $("runDailyButton").addEventListener("click", () => runDaily().catch((error) => toast(error.message)));
-  $("scoreButton").addEventListener("click", () => refreshScores().catch((error) => toast(error.message)));
   $("precheckDemoButton").addEventListener("click", () => precheckSample().catch((error) => toast(error.message)));
   $("createDraftButton").addEventListener("click", () => createDraft().catch((error) => toast(error.message)));
   $("wechatPreviewButton").addEventListener("click", () => createWechatPreview().catch((error) => toast(error.message)));

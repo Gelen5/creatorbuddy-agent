@@ -162,6 +162,8 @@ python scripts/creatorbuddy.py doctor
 
 `quickstart` should be the default first-use path. It asks for owner, platform, account profile, product, benchmark account, and first content asset, then writes the workspace config, first opportunity report, first draft brief, and run log automatically.
 
+For the productized main path, follow `docs/creatorbuddy-main-flow.md`.
+
 Manual equivalent:
 
 ```powershell

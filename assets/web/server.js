@@ -63,41 +63,12 @@ async function readJsonl(file) {
   }
 }
 
-function listFilesSafe(dir) {
-  try {
-    return fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-}
-
-function newestFiles(dir, suffix = ".json", limit = 12) {
-  return listFilesSafe(dir)
-    .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
-    .map((entry) => {
-      const file = path.join(dir, entry.name);
-      const stat = fs.statSync(file);
-      return { file, name: entry.name, mtime: stat.mtimeMs };
-    })
-    .sort((a, b) => b.mtime - a.mtime)
-    .slice(0, limit);
-}
-
 function platformLabel(platform) {
   return {
     xiaohongshu: "小红书",
     douyin: "抖音",
     "wechat-mp": "公众号",
     "wechat-channels": "视频号"
-  }[platform] || platform;
-}
-
-function platformShort(platform) {
-  return {
-    xiaohongshu: "XHS",
-    douyin: "Douyin",
-    "wechat-mp": "WeChat",
-    "wechat-channels": "Channels"
   }[platform] || platform;
 }
 
@@ -299,16 +270,6 @@ async function handleApi(req, res, url) {
     const body = await parseBody(req);
     const args = ["run-daily"];
     const result = await runAgent(args, 180000);
-    return sendJson(res, result.ok ? 200 : 500, {
-      ok: result.ok,
-      code: result.code,
-      stdout: result.stdout,
-      stderr: result.stderr
-    });
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/score-topics") {
-    const result = await runAgent(["today"], 120000);
     return sendJson(res, result.ok ? 200 : 500, {
       ok: result.ok,
       code: result.code,

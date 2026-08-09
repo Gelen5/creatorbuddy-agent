@@ -28,7 +28,7 @@ python scripts\creatorbuddy.py quickstart
 python scripts\creatorbuddy.py run-daily
 ```
 
-Quickstart also creates the first opportunity report and first draft brief, so a new tester can see an immediate output after setup.
+Quickstart also creates the first opportunity report and first draft brief, so a new tester can see an immediate output after setup. The productized main path is documented in [`docs/creatorbuddy-main-flow.md`](docs/creatorbuddy-main-flow.md).
 
 `quickstart` 会一步步询问：你是谁、做哪个平台、账号定位、核心产品、对标账号、发过什么内容，并自动写入本地 workspace。
 
