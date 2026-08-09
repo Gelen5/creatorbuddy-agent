@@ -18,33 +18,25 @@
         </div>
 
         <nav class="nav-list" aria-label="主导航">
-          <button class="nav-item active" data-section="today">
+          <button class="nav-item active" data-section="home">
             <span class="icon">◎</span>
-            <span>今日机会</span>
+            <span>首页</span>
           </button>
-          <button class="nav-item" data-section="signals">
-            <span class="icon">⌁</span>
-            <span>趋势信号</span>
+          <button class="nav-item" data-section="account">
+            <span class="icon">◌</span>
+            <span>账号中心</span>
           </button>
-          <button class="nav-item" data-section="drafts">
+          <button class="nav-item" data-section="opportunities">
             <span class="icon">✎</span>
-            <span>内容草稿</span>
+            <span>内容机会</span>
           </button>
           <button class="nav-item" data-section="library">
             <span class="icon">▤</span>
-            <span>内容资产</span>
+            <span>内容库</span>
           </button>
           <button class="nav-item" data-section="review">
             <span class="icon">✓</span>
-            <span>复盘</span>
-          </button>
-          <button class="nav-item" data-section="strategy">
-            <span class="icon">⌬</span>
-            <span>策略库</span>
-          </button>
-          <button class="nav-item" data-section="settings">
-            <span class="icon">⚙</span>
-            <span>设置</span>
+            <span>复盘中心</span>
           </button>
         </nav>
 
@@ -67,7 +59,7 @@
           </div>
         </header>
 
-        <section class="content-grid" id="todayView">
+        <section class="content-grid" id="homeView">
           <section class="focus-panel">
             <div class="eyebrow">今日最高优先级</div>
             <div class="hero-row">
@@ -87,7 +79,7 @@
 
             <div class="action-row">
               <button class="primary-button" id="createDraftButton">生成草稿</button>
-              <button class="secondary-button" id="reviewEvidenceButton">查看证据</button>
+              <button class="secondary-button" id="reviewEvidenceButton">查看内容机会</button>
             </div>
 
             <section class="draft-preview" id="draftPreview" hidden>
@@ -156,8 +148,8 @@
             <section class="system-section">
               <div class="section-title">快捷操作</div>
               <div class="quick-actions">
-                <button id="runDailyButton">运行今日计划</button>
-                <button id="scoreButton">刷新选题评分</button>
+                <button id="runDailyButton">生成今日机会</button>
+                <button id="scoreButton">刷新机会评分</button>
                 <button id="precheckDemoButton">检查当前样本</button>
               </div>
             </section>

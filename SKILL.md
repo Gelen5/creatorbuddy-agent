@@ -126,11 +126,13 @@ python scripts/creatorbuddy.py <command>
 If the user has not initialized CreatorBuddy, run:
 
 ```powershell
-python scripts/creatorbuddy.py init
+python scripts/creatorbuddy.py quickstart
 python scripts/creatorbuddy.py doctor
 ```
 
-Then complete the four-step onboarding path:
+`quickstart` should be the default first-use path. It asks for owner, platform, account profile, product, benchmark account, and first content asset, then writes the workspace config automatically.
+
+Manual equivalent:
 
 ```powershell
 python scripts/creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
@@ -265,3 +267,11 @@ Do not hard-code Gelen, Gelen OS, or the original developer's accounts into a us
 ## Optional Web Workbench
 
 The web workbench bundled in `assets/web` is a local MVP. It is useful for visual inspection, but Codex usage should not depend on it. If Node.js is unavailable, use the CLI commands instead.
+
+The web MVP must stay focused on five usable console pages:
+
+- 首页：今天该做什么；
+- 账号中心：我是谁、卖什么、做什么平台；
+- 内容机会：今日选题报告、评分和证据；
+- 内容库：已发布内容和数据；
+- 复盘中心：表现分析、策略候选和自成长沉淀。

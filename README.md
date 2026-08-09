@@ -24,9 +24,11 @@ Or run manually:
 
 ```powershell
 cd "$env:USERPROFILE\.codex\skills\creatorbuddy-agent"
-python scripts\creatorbuddy.py init
+python scripts\creatorbuddy.py quickstart
 python scripts\creatorbuddy.py today
 ```
+
+`quickstart` 会一步步询问：你是谁、做哪个平台、账号定位、核心产品、对标账号、发过什么内容，并自动写入本地 workspace。
 
 首用时严格按以下顺序执行：连接账号、补账号画像、添加对标账号、记录第一条内容资产，再生成今日选题。详见 [`docs/agent-workbench-flow.md`](docs/agent-workbench-flow.md) 和 [`docs/content-asset-schema.md`](docs/content-asset-schema.md)。
 
@@ -40,6 +42,7 @@ Xiaohongshu-specific drafts also include a sanitized playbook for profile clarit
 Benchmark distillation is available for Xiaohongshu public profile cards: import a benchmark profile, segment visible samples, then generate a `creator_clone.md`. See [`docs/benchmark-distillation.md`](docs/benchmark-distillation.md).
 
 ```powershell
+python scripts\creatorbuddy.py quickstart
 python scripts\creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
 python scripts\creatorbuddy.py set-profile --platform xiaohongshu --positioning "你的账号定位" --target-audience "目标用户" --content-directions "方向1,方向2" --commercial-goal "商业目标" --core-product "核心产品"
 python scripts\creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"
@@ -92,7 +95,7 @@ They need to fill account names, positioning, target audience, keywords, product
 
 ## Optional Web UI
 
-The CLI works without Node.js. The optional web UI requires Node.js.
+The CLI works without Node.js. The optional web UI requires Node.js. The first web MVP is intentionally a control console with five pages: 首页、账号中心、内容机会、内容库、复盘中心。
 
 ```powershell
 python scripts\creatorbuddy.py serve --port 5174

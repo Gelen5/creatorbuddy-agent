@@ -24,6 +24,58 @@ def run_cli(workspace: Path, *args: str, check: bool = True) -> subprocess.Compl
 
 
 class WorkflowSmokeTest(unittest.TestCase):
+    def test_quickstart_writes_first_user_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            result = json.loads(run_cli(
+                workspace,
+                "quickstart",
+                "--non-interactive",
+                "--owner",
+                "测试用户",
+                "--platform",
+                "xiaohongshu",
+                "--account-id",
+                "own-quick",
+                "--account-name",
+                "测试小红书号",
+                "--positioning",
+                "帮助普通人用 AI 做内容",
+                "--target-audience",
+                "自媒体新手",
+                "--content-directions",
+                "AI工具教程,案例复盘",
+                "--commercial-goal",
+                "内容获客",
+                "--core-product",
+                "AI训练营",
+                "--keywords",
+                "AI工具教程,AI变现",
+                "--benchmark-name",
+                "测试对标号",
+                "--benchmark-id",
+                "bench-quick",
+                "--first-title",
+                "AI工具教程第一篇",
+                "--first-body",
+                "正文或脚本",
+                "--first-content-id",
+                "quick-001",
+                "--first-metrics-json",
+                "{\"likes\":3,\"saves\":1}",
+            ).stdout)
+            self.assertTrue(result["ok"])
+            config = json.loads((workspace / "config" / "agent_config.json").read_text(encoding="utf-8"))
+            platform = next(item for item in config["platforms"] if item["platform"] == "xiaohongshu")
+            self.assertEqual(config["owner"], "测试用户")
+            self.assertEqual(platform["account_name"], "测试小红书号")
+            self.assertEqual(platform["benchmark_accounts"][0]["account_id"], "bench-quick")
+            rows = (workspace / "data" / "published_content.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(json.loads(rows[0])["content_id"], "quick-001")
+            status = json.loads(run_cli(workspace, "onboarding-status").stdout)
+            self.assertEqual(status["next_action"], "today")
+
     def test_account_gate_and_cold_start_override(self):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)

@@ -1,6 +1,6 @@
 const state = {
   dashboard: null,
-  section: "today",
+  section: "home",
   draft: null
 };
 
@@ -182,7 +182,7 @@ async function createDraft() {
   });
   state.draft = result.draft;
   renderDraft(result.draft);
-  if (state.section === "drafts") renderCurrentSection();
+  if (state.section === "opportunities") renderCurrentSection();
   toast("草稿简报已生成。");
 }
 
@@ -206,7 +206,7 @@ function renderDraft(draft) {
 
 function reviewEvidence() {
   const count = state.dashboard?.evidence?.length || 0;
-  goSection("signals");
+  goSection("opportunities");
   toast(`已载入 ${count} 条证据信号。`);
 }
 
@@ -220,35 +220,25 @@ function runCommand() {
 }
 
 const pages = {
-  signals: {
-    eyebrow: "信号中心",
-    title: "趋势信号",
-    description: "查看 CreatorBuddy 用于判断今日机会的样本、评分和证据等级。"
+  account: {
+    eyebrow: "Account Center",
+    title: "账号中心",
+    description: "确认我是谁、卖什么、做什么平台，以及每个平台的定位和对标账号。"
   },
-  drafts: {
-    eyebrow: "创作中心",
-    title: "内容草稿",
-    description: "管理由今日推荐选题生成的草稿简报和发布检查清单。"
+  opportunities: {
+    eyebrow: "Content Opportunity",
+    title: "内容机会",
+    description: "把今日推荐、证据信号、评分理由和下一步草稿动作放在同一个页面。"
   },
   library: {
-    eyebrow: "资产沉淀",
-    title: "内容资产",
-    description: "沉淀已发布内容、指标、复盘状态和下次改法。"
+    eyebrow: "Content Library",
+    title: "内容库",
+    description: "沉淀已发布内容、正文脚本、发布时间、数据、转化和下次改法。"
   },
   review: {
-    eyebrow: "增长复盘",
-    title: "复盘",
-    description: "查看待复盘内容、运行日志和下一次复盘提醒。"
-  },
-  strategy: {
-    eyebrow: "自成长",
-    title: "策略库",
-    description: "查看已生效策略和待确认的策略候选。"
-  },
-  settings: {
-    eyebrow: "系统配置",
-    title: "设置",
-    description: "查看当前工作区、平台账号、关键词和数据源路径。"
+    eyebrow: "Growth Review",
+    title: "复盘中心",
+    description: "查看待复盘内容、已生效策略、待确认策略，以及 Agent 自成长记录。"
   }
 };
 
@@ -257,13 +247,13 @@ function goSection(section) {
   for (const item of document.querySelectorAll(".nav-item")) {
     item.classList.toggle("active", item.dataset.section === section);
   }
-  $("todayView").hidden = section !== "today";
-  $("pageView").hidden = section === "today";
+  $("homeView").hidden = section !== "home";
+  $("pageView").hidden = section === "home";
   renderCurrentSection();
 }
 
 function renderCurrentSection() {
-  if (!state.dashboard || state.section === "today") return;
+  if (!state.dashboard || state.section === "home") return;
   const page = pages[state.section];
   $("pageEyebrow").textContent = page.eyebrow;
   $("pageTitle").textContent = page.title;
@@ -272,19 +262,70 @@ function renderCurrentSection() {
 }
 
 function renderPageContent(section, data) {
-  if (section === "signals") return renderSignalsPage(data);
-  if (section === "drafts") return renderDraftsPage(data);
+  if (section === "account") return renderAccountPage(data);
+  if (section === "opportunities") return renderOpportunitiesPage(data);
   if (section === "library") return renderLibraryPage(data);
   if (section === "review") return renderReviewPage(data);
-  if (section === "strategy") return renderStrategyPage(data);
-  if (section === "settings") return renderSettingsPage(data);
   return "";
 }
 
-function renderSignalsPage(data) {
-  const rows = (data.topScores || []).slice(0, 12);
-  if (!rows.length) return emptyPage("暂无趋势信号。请先运行今日计划。");
+function renderAccountPage(data) {
+  const platforms = data.config?.platforms || [];
+  const owner = data.config?.owner || "待补充";
+  const productKeywords = data.config?.product_keywords || [];
   return `
+    <div class="detail-grid">
+      <div class="detail-block">
+        <div class="muted-label">我是谁</div>
+        <h2>${escapeHtml(owner)}</h2>
+        <p>工作区：${escapeHtml(data.config?.workspace_id || "未配置")}</p>
+        <p>核心产品：${escapeHtml(productKeywords.join("、") || "待补充")}</p>
+      </div>
+      <div class="detail-block">
+        <div class="muted-label">下一步</div>
+        <h2>首用配置建议用 quickstart</h2>
+        <p>命令：python scripts\\creatorbuddy.py quickstart</p>
+      </div>
+    </div>
+    <div class="data-table account-table">
+      <div class="table-row table-head"><span>平台</span><span>账号 / 定位</span><span>目标用户</span><span>对标</span></div>
+      ${platforms
+        .map((item) => {
+          const benchmarks = item.benchmark_accounts || [];
+          const positioning = item.positioning ? ` · ${item.positioning}` : "";
+          return `
+            <div class="table-row">
+              <span>${escapeHtml(platformName[item.platform] || item.platform)}</span>
+              <span>${escapeHtml((item.account_name || "未连接") + positioning)}</span>
+              <span>${escapeHtml(item.target_audience || "待补充")}</span>
+              <span>${escapeHtml(benchmarks.length ? `${benchmarks.length} 个` : "待添加")}</span>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderOpportunitiesPage(data) {
+  const rows = (data.topScores || []).slice(0, 12);
+  const recommendation = data.recommendation;
+  const top = recommendation
+    ? `
+      <div class="detail-block opportunity-lead">
+        <div class="muted-label">今日推荐</div>
+        <h2>${escapeHtml(recommendation.topic || "")}</h2>
+        <p>${escapeHtml(firstReason(recommendation))}</p>
+        <div class="page-actions">
+          <button class="primary-button" onclick="window.creatorBuddyCreateDraft()">生成草稿</button>
+          <button class="secondary-button" onclick="window.creatorBuddyPrecheck()">发布检查</button>
+        </div>
+      </div>
+    `
+    : "";
+  if (!rows.length) return emptyPage("暂无内容机会。请先运行今日计划。");
+  return `
+    ${top}
     <div class="data-table">
       <div class="table-row table-head"><span>平台</span><span>选题/信号</span><span>评分</span><span>证据</span></div>
       ${rows
@@ -299,25 +340,6 @@ function renderSignalsPage(data) {
           `
         )
         .join("")}
-    </div>
-  `;
-}
-
-function renderDraftsPage(data) {
-  const recommendation = data.recommendation;
-  const draftHtml = state.draft
-    ? `
-      <div class="detail-block">
-        <div class="muted-label">当前草稿</div>
-        <h2>${escapeHtml(state.draft.platformLabel)} · ${escapeHtml(state.draft.title)}</h2>
-        <p>${escapeHtml(state.draft.opening)}</p>
-      </div>`
-    : `<div class="detail-block"><div class="muted-label">推荐选题</div><h2>${escapeHtml(recommendation?.topic || "暂无推荐")}</h2><p>点击“生成草稿”后，这里会显示草稿简报。</p></div>`;
-  return `
-    ${draftHtml}
-    <div class="page-actions">
-      <button class="primary-button" onclick="window.creatorBuddyCreateDraft()">生成草稿</button>
-      <button class="secondary-button" onclick="window.creatorBuddyPrecheck()">发布检查</button>
     </div>
   `;
 }
@@ -346,6 +368,9 @@ function renderLibraryPage(data) {
 
 function renderReviewPage(data) {
   const run = data.latestRun;
+  const active = data.activeRules || [];
+  const pending = data.pendingStrategies || [];
+  const pendingReviews = data.published || [];
   return `
     <div class="detail-grid">
       <div class="detail-block">
@@ -358,15 +383,6 @@ function renderReviewPage(data) {
         <h2>21:00</h2>
         <p>检查今日发布内容表现，沉淀有效经验和下一次改法。</p>
       </div>
-    </div>
-  `;
-}
-
-function renderStrategyPage(data) {
-  const active = data.activeRules || [];
-  const pending = data.pendingStrategies || [];
-  return `
-    <div class="detail-grid">
       <div class="detail-block">
         <div class="muted-label">已生效策略</div>
         ${active.length ? active.map((rule) => `<p>${escapeHtml(rule.rule || "")}</p>`).join("") : "<p>暂无已生效策略。</p>"}
@@ -376,32 +392,26 @@ function renderStrategyPage(data) {
         ${pending.length ? pending.map((rule) => `<p>${escapeHtml(rule.rule || "")}</p>`).join("") : "<p>暂无待确认策略。</p>"}
       </div>
     </div>
-  `;
-}
-
-function renderSettingsPage(data) {
-  const platforms = data.config?.platforms || [];
-  return `
-    <div class="detail-block">
-      <div class="muted-label">工作区</div>
-      <h2>${escapeHtml(data.config?.workspace_id || "未配置")}</h2>
-      <p>数据目录：${escapeHtml(data.vault || "")}</p>
-    </div>
-    <div class="data-table">
-      <div class="table-row table-head"><span>平台</span><span>账号</span><span>关键词</span><span>状态</span></div>
-      ${platforms
-        .map(
-          (item) => `
-            <div class="table-row">
-              <span>${escapeHtml(platformName[item.platform] || item.platform)}</span>
-              <span>${escapeHtml(item.account_name || "未命名")}</span>
-              <span>${escapeHtml((item.benchmark_industries || []).join("、"))}</span>
-              <span>${item.enabled === false ? "停用" : "启用"}</span>
-            </div>
-          `
-        )
-        .join("")}
-    </div>
+    ${
+      pendingReviews.length
+        ? `<div class="data-table">
+            <div class="table-row table-head"><span>平台</span><span>内容</span><span>发布时间</span><span>复盘</span></div>
+            ${pendingReviews
+              .slice(0, 8)
+              .map(
+                (row) => `
+                  <div class="table-row">
+                    <span>${escapeHtml(platformName[row.platform] || row.platform)}</span>
+                    <span>${escapeHtml(row.title || "")}</span>
+                    <span>${escapeHtml(row.published_at || "待补充")}</span>
+                    <span>${escapeHtml(row.review_status || row.status || "待复盘")}</span>
+                  </div>
+                `
+              )
+              .join("")}
+          </div>`
+        : ""
+    }
   `;
 }
 

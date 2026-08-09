@@ -808,19 +808,13 @@ def command_workflow_audit(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
-def command_init(args: argparse.Namespace) -> int:
-    workspace = Path(args.workspace or default_workspace())
+def initialize_workspace(workspace: Path, workspace_id: str = "", owner: str = "") -> dict[str, Any]:
     ps = paths(workspace)
-    if ps["config"].exists() and not args.force:
-        print(json.dumps({"ok": True, "workspace": str(workspace), "message": "already initialized"}, ensure_ascii=False, indent=2))
-        return 0
-
     config = read_json(TEMPLATE_CONFIG, {})
-    config["workspace_id"] = args.workspace_id or config.get("workspace_id") or "creatorbuddy-workspace"
-    config["owner"] = args.owner or config.get("owner") or ""
+    config["workspace_id"] = workspace_id or config.get("workspace_id") or "creatorbuddy-workspace"
+    config["owner"] = owner or config.get("owner") or ""
     config["updated_at"] = now_iso()
     write_json(ps["config"], config)
-
     write_json(ps["scores"], [])
     ps["content"].parent.mkdir(parents=True, exist_ok=True)
     ps["content"].write_text("", encoding="utf-8")
@@ -847,7 +841,184 @@ def command_init(args: argparse.Namespace) -> int:
     )
     ps["reports"].mkdir(parents=True, exist_ok=True)
     ps["drafts"].mkdir(parents=True, exist_ok=True)
+    return config
+
+
+def command_init(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    ps = paths(workspace)
+    if ps["config"].exists() and not args.force:
+        print(json.dumps({"ok": True, "workspace": str(workspace), "message": "already initialized"}, ensure_ascii=False, indent=2))
+        return 0
+
+    initialize_workspace(workspace, args.workspace_id, args.owner)
     print(json.dumps({"ok": True, "workspace": str(workspace), "config": str(ps["config"])}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def prompt_value(label: str, current: str = "", required: bool = True) -> str:
+    suffix = f" [{current}]" if current else ""
+    while True:
+        value = input(f"{label}{suffix}: ").strip()
+        if value:
+            return value
+        if current:
+            return current
+        if not required:
+            return ""
+        print("这个字段建议填写，后续选题会用到。")
+
+
+def quickstart_value(args: argparse.Namespace, name: str, label: str, current: str = "", required: bool = True) -> str:
+    value = str(getattr(args, name, "") or "").strip()
+    if value:
+        return value
+    if args.non_interactive:
+        if required and not current:
+            raise SystemExit(f"quickstart 缺少必要参数：--{name.replace('_', '-')}")
+        return current
+    return prompt_value(label, current, required)
+
+
+def command_quickstart(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    ps = paths(workspace)
+    if not ps["config"].exists():
+        initialize_workspace(workspace, args.workspace_id, args.owner)
+
+    config = load_config(workspace)
+    platform = args.platform or "xiaohongshu"
+    platform_cfg = find_platform(config, platform)
+    if platform_cfg is None:
+        supported = ", ".join(str(item.get("platform")) for item in config.get("platforms", []))
+        raise SystemExit(f"未找到平台配置：{platform}。当前支持：{supported}")
+
+    owner = quickstart_value(args, "owner", "你是谁 / 工作区名称", str(config.get("owner") or ""), required=False)
+    account_name = quickstart_value(args, "account_name", "你的账号名称", str(platform_cfg.get("account_name") or ""))
+    account_id = quickstart_value(args, "account_id", "你的账号 ID / 备注 ID", str(platform_cfg.get("account_id") or safe_slug(account_name, "account")))
+    positioning = quickstart_value(args, "positioning", "你的账号定位", str(platform_cfg.get("positioning") or ""))
+    target_audience = quickstart_value(args, "target_audience", "你的目标用户是谁", str(platform_cfg.get("target_audience") or ""))
+    content_directions = quickstart_value(
+        args,
+        "content_directions",
+        "你的内容方向，多个用逗号隔开",
+        "，".join(platform_cfg.get("content_directions", []) or []),
+    )
+    commercial_goal = quickstart_value(args, "commercial_goal", "你的商业目标", str(platform_cfg.get("commercial_goal") or ""), required=False)
+    core_product = quickstart_value(args, "core_product", "你的核心产品 / 服务 / 承接方式", str(platform_cfg.get("core_product") or ""), required=False)
+    keywords = quickstart_value(
+        args,
+        "keywords",
+        "你关注的行业关键词，多个用逗号隔开",
+        "，".join(platform_cfg.get("benchmark_industries", []) or []),
+        required=False,
+    )
+    benchmark_name = quickstart_value(args, "benchmark_name", "你的对标账号名称", "", required=False)
+    benchmark_id = quickstart_value(
+        args,
+        "benchmark_id",
+        "对标账号 ID / 备注 ID",
+        safe_slug(benchmark_name, "benchmark") if benchmark_name else "",
+        required=False,
+    )
+    first_title = quickstart_value(args, "first_title", "你发过的一条内容标题", "", required=False)
+    first_body = quickstart_value(args, "first_body", "这条内容的正文 / 脚本", "", required=False)
+
+    if owner:
+        config["owner"] = owner
+    platform_cfg.update({
+        "account_id": account_id,
+        "account_name": account_name,
+        "enabled": True,
+        "collect_own_account": True,
+        "positioning": positioning,
+        "target_audience": target_audience,
+        "content_directions": split_csv(content_directions),
+        "commercial_goal": commercial_goal,
+        "core_product": core_product,
+    })
+    if keywords:
+        platform_cfg["benchmark_industries"] = split_csv(keywords)
+    if core_product:
+        product_keywords = config.setdefault("product_keywords", [])
+        for item in split_csv(core_product):
+            if item not in product_keywords:
+                product_keywords.append(item)
+    if benchmark_name:
+        accounts = platform_cfg.setdefault("benchmark_accounts", [])
+        benchmark = {
+            "account_id": benchmark_id or safe_slug(benchmark_name, "benchmark"),
+            "account_name": benchmark_name,
+            "url": args.benchmark_url or "",
+            "enabled": True,
+        }
+        existing = next((item for item in accounts if item.get("account_id") == benchmark["account_id"]), None)
+        if existing:
+            existing.update(benchmark)
+        else:
+            accounts.append(benchmark)
+
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+
+    content_id = ""
+    if first_title:
+        row = {
+            "schema_version": 1,
+            "content_id": args.first_content_id or f"{platform}-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "platform": platform,
+            "status": "published",
+            "topic": args.first_topic or first_title,
+            "title": first_title,
+            "cover": "",
+            "body": first_body,
+            "script": "",
+            "proof_assets": [],
+            "product_bridge": core_product,
+            "published_at": args.first_published_at or "",
+            "metrics": parse_json_arg(args.first_metrics_json, {}),
+            "comments": [],
+            "conversions": {},
+            "review": "",
+            "next_change": "",
+            "lessons": [],
+            "source": "quickstart",
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        }
+        append_jsonl(ps["content"], row)
+        content_id = row["content_id"]
+        update_onboarding(config, workspace)
+        save_config(workspace, config)
+
+    status_payload = {
+        "ok": True,
+        "workspace": str(workspace),
+        "platform": platform,
+        "account": {
+            "account_id": account_id,
+            "account_name": account_name,
+            "positioning": positioning,
+            "target_audience": target_audience,
+            "content_directions": split_csv(content_directions),
+            "commercial_goal": commercial_goal,
+            "core_product": core_product,
+        },
+        "benchmark_added": bool(benchmark_name),
+        "first_content_id": content_id,
+        "next_commands": [
+            "python scripts/creatorbuddy.py onboarding-status",
+            "python scripts/creatorbuddy.py today",
+            f"python scripts/creatorbuddy.py draft --platform {platform}",
+        ],
+    }
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+    status_payload["onboarding"] = {
+        "current_step": config.get("onboarding", {}).get("current_step"),
+        "steps": config.get("onboarding", {}).get("steps", []),
+    }
+    print(json.dumps(status_payload, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1326,7 +1497,7 @@ def command_precheck(args: argparse.Namespace) -> int:
 
 def command_add_content(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace or default_workspace())
-    load_config(workspace)
+    config = load_config(workspace)
     body = args.body or ""
     if args.file:
         body = Path(args.file).read_text(encoding="utf-8")
@@ -1357,6 +1528,8 @@ def command_add_content(args: argparse.Namespace) -> int:
         "updated_at": now_iso(),
     }
     append_jsonl(paths(workspace)["content"], row)
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
     print(json.dumps({"ok": True, "content_id": row["content_id"], "content_path": str(paths(workspace)["content"])}, ensure_ascii=False, indent=2))
     return 0
 
@@ -1673,6 +1846,30 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--owner", default="")
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=command_init)
+
+    quickstart = sub.add_parser("quickstart", help="交互式完成新用户首用配置，并写入账号、对标和第一条内容资产")
+    quickstart.add_argument("--workspace-id", default="")
+    quickstart.add_argument("--owner", default="")
+    quickstart.add_argument("--platform", default="xiaohongshu")
+    quickstart.add_argument("--account-id", default="")
+    quickstart.add_argument("--account-name", default="")
+    quickstart.add_argument("--positioning", default="")
+    quickstart.add_argument("--target-audience", default="")
+    quickstart.add_argument("--content-directions", default="")
+    quickstart.add_argument("--commercial-goal", default="")
+    quickstart.add_argument("--core-product", default="")
+    quickstart.add_argument("--keywords", default="")
+    quickstart.add_argument("--benchmark-name", default="")
+    quickstart.add_argument("--benchmark-id", default="")
+    quickstart.add_argument("--benchmark-url", default="")
+    quickstart.add_argument("--first-title", default="")
+    quickstart.add_argument("--first-topic", default="")
+    quickstart.add_argument("--first-body", default="")
+    quickstart.add_argument("--first-content-id", default="")
+    quickstart.add_argument("--first-published-at", default="")
+    quickstart.add_argument("--first-metrics-json", default="")
+    quickstart.add_argument("--non-interactive", action="store_true", help="用于测试或脚本模式；缺少必要字段时直接失败")
+    quickstart.set_defaults(func=command_quickstart)
 
     account = sub.add_parser("set-account", help="连接或更新一个自有平台账号")
     account.add_argument("--platform", required=True)
