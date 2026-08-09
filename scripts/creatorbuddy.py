@@ -716,6 +716,98 @@ def command_onboarding_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def item_status(ok: bool, evidence: list[str], missing: list[str]) -> dict[str, Any]:
+    return {
+        "status": "complete" if ok else "incomplete",
+        "evidence": evidence,
+        "missing": missing,
+    }
+
+
+def command_workflow_audit(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    config = load_config(workspace)
+    ps = paths(workspace)
+    platforms = [item for item in config.get("platforms", []) if item.get("enabled", True)]
+    connected = [item for item in platforms if item.get("account_id") and item.get("collect_own_account", True)]
+    profiled = [
+        item for item in connected
+        if item.get("positioning") and item.get("target_audience") and (item.get("content_directions") or item.get("benchmark_industries"))
+    ]
+    content_rows = read_jsonl(ps["content"])
+    scores = read_json(ps["scores"], [])
+    active = read_json(ps["active"], {"active_rules": []})
+    active_rules = active.get("active_rules") or []
+    pending = read_jsonl(ps["pending"])
+    reports = list(ps["reports"].glob("*")) if ps["reports"].exists() else []
+    drafts = list(ps["drafts"].glob("*.json")) if ps["drafts"].exists() else []
+    xhs_draft_paths = []
+    strategy_readback_paths = []
+    for draft_path in drafts:
+        draft = read_json(draft_path, {})
+        if draft.get("platform") == "xiaohongshu" and draft.get("xiaohongshu_brief"):
+            xhs_draft_paths.append(draft_path)
+        if draft.get("strategy_context"):
+            strategy_readback_paths.append(draft_path)
+    clone_paths = list(ps["benchmarks"].glob("xiaohongshu/*/creator_clone.md")) if ps["benchmarks"].exists() else []
+    precheck_reports = [path for path in reports if path.name.endswith("-precheck.json")]
+    post_review_reports = [path for path in reports if path.name.endswith("-post-review.md")]
+    today_reports = [path for path in reports if path.name.endswith("-今日内容机会.md")]
+    reviewed_rows = [row for row in content_rows if row.get("status") == "reviewed" or row.get("review_status") == "reviewed"]
+
+    expected_steps = ["connect_account", "configure_profile", "choose_benchmark", "import_content", "start_growth"]
+    items = {
+        "1_first_use_flow": item_status(
+            config.get("onboarding", {}).get("steps") == expected_steps,
+            [str(ps["config"])],
+            [] if config.get("onboarding", {}).get("steps") == expected_steps else ["onboarding steps mismatch"],
+        ),
+        "2_account_config_center": item_status(
+            bool(connected and profiled),
+            [str(ps["config"])],
+            [] if connected and profiled else ["set-account", "set-profile"],
+        ),
+        "3_content_asset_database": item_status(
+            ps["content"].exists() and bool(content_rows),
+            [str(ps["content"])],
+            [] if content_rows else ["add-content or review"],
+        ),
+        "4_today_opportunity_report": item_status(
+            bool(scores and today_reports),
+            [str(ps["scores"]), *[str(path) for path in today_reports[-1:]]],
+            [] if scores and today_reports else ["today"],
+        ),
+        "5_xiaohongshu_loop": item_status(
+            bool(any(item.get("platform") == "xiaohongshu" for item in profiled) and xhs_draft_paths and precheck_reports),
+            [str(path) for path in xhs_draft_paths[-1:] + precheck_reports[-1:]],
+            [] if xhs_draft_paths and precheck_reports else ["draft --platform xiaohongshu", "precheck --platform xiaohongshu"],
+        ),
+        "6_benchmark_distillation": item_status(
+            bool(read_jsonl(ps["benchmark_samples"]) and clone_paths),
+            [str(ps["benchmark_samples"]), *[str(path) for path in clone_paths[-1:]]],
+            [] if clone_paths else ["import-benchmark", "segment-benchmark", "distill-creator"],
+        ),
+        "7_prepublish_check": item_status(
+            bool(precheck_reports),
+            [str(path) for path in precheck_reports[-1:]],
+            [] if precheck_reports else ["precheck"],
+        ),
+        "8_postpublish_review": item_status(
+            bool(reviewed_rows and post_review_reports),
+            [str(ps["content"]), *[str(path) for path in post_review_reports[-1:]]],
+            [] if reviewed_rows and post_review_reports else ["post-review"],
+        ),
+        "9_strategy_approval_and_readback": item_status(
+            bool(pending and active_rules and strategy_readback_paths),
+            [str(ps["pending"]), str(ps["active"]), *[str(path) for path in strategy_readback_paths[-1:]]],
+            [] if pending and active_rules and strategy_readback_paths else ["self-growth", "approve-strategy", "draft after approve-strategy"],
+        ),
+    }
+    ok = all(item["status"] == "complete" for item in items.values())
+    print(json.dumps({"ok": ok, "workspace": str(workspace), "items": items}, ensure_ascii=False, indent=2))
+    return 0 if ok else 1
+
+
 def command_init(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace or default_workspace())
     ps = paths(workspace)
@@ -1223,7 +1315,11 @@ def command_precheck(args: argparse.Namespace) -> int:
         "risks": risks,
         "missing": missing,
         "suggestions": ["保留具体证据", "避免夸大收益", "确认平台表达方式", "补充 CTA、content_id 和发布后归因字段", "小红书标题优先用具体场景、用户处境或搜索问题"],
+        "created_at": now_iso(),
     }
+    report = paths(workspace)["reports"] / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{args.platform}-precheck.json"
+    write_json(report, payload)
+    payload["report"] = str(report)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -1603,6 +1699,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     onboarding = sub.add_parser("onboarding-status", help="检查工作台是否完成首用流程")
     onboarding.set_defaults(func=command_onboarding_status)
+
+    audit = sub.add_parser("workflow-audit", help="审计 9 项正式版闭环要求的当前 workspace 证据")
+    audit.set_defaults(func=command_workflow_audit)
 
     collect = sub.add_parser("collect", help="接收外部适配器信号并标准化，不伪造平台数据")
     collect.add_argument("--signal-json", default="")

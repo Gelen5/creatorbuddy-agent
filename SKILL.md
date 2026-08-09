@@ -139,6 +139,7 @@ python scripts/creatorbuddy.py add-benchmark --platform xiaohongshu --account-id
 python scripts/creatorbuddy.py onboarding-status
 python scripts/creatorbuddy.py add-content --platform xiaohongshu --title "第一条内容资产" --body "正文或脚本" --metrics-json '{"likes":0,"comments":0}'
 python scripts/creatorbuddy.py today
+python scripts/creatorbuddy.py workflow-audit
 ```
 
 每日完整运行：
@@ -208,6 +209,12 @@ Run a pre-publish check:
 
 ```powershell
 python scripts/creatorbuddy.py precheck --title "标题" --content "正文或脚本"
+```
+
+Audit the full commercial MVP loop:
+
+```powershell
+python scripts/creatorbuddy.py workflow-audit
 ```
 
 Record published content for later review:

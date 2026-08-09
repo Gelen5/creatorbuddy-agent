@@ -259,6 +259,60 @@ class WorkflowSmokeTest(unittest.TestCase):
             self.assertIn("Creator Clone: 测试对标号", clone_text)
             self.assertIn("Topic Buckets", clone_text)
 
+    def test_workflow_audit_proves_all_nine_requirements_after_full_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            run_cli(workspace, "set-account", "--platform", "xiaohongshu", "--account-id", "own-1", "--account-name", "测试账号")
+            run_cli(
+                workspace,
+                "set-profile",
+                "--platform",
+                "xiaohongshu",
+                "--positioning",
+                "帮助普通人用 AI 做内容",
+                "--target-audience",
+                "自媒体新手",
+                "--content-directions",
+                "AI工具教程,案例复盘",
+                "--commercial-goal",
+                "内容获客",
+                "--core-product",
+                "AI训练营",
+            )
+            run_cli(workspace, "add-benchmark", "--platform", "xiaohongshu", "--account-id", "bench001", "--account-name", "测试对标号")
+            run_cli(workspace, "add-content", "--platform", "xiaohongshu", "--content-id", "xhs-001", "--title", "AI工具教程", "--metrics-json", "{\"views\":100,\"likes\":3,\"saves\":6}")
+
+            state = {
+                "user": {
+                    "userPageData": {
+                        "basicInfo": {"nickname": "测试对标号", "redId": "bench001", "desc": "AI 工具教程"},
+                        "interactions": [],
+                        "tags": ["AI", "教程"],
+                    },
+                    "notes": [[
+                        {"index": 1, "noteCard": {"noteId": "n1", "type": "normal", "displayTitle": "AI工具教程入门", "interactInfo": {"likedCount": 120}, "user": {"nickname": "测试对标号", "userId": "u1"}, "cover": {"urlDefault": "https://example.com/1.webp"}}}
+                    ]],
+                }
+            }
+            html = workspace / "xhs_profile.html"
+            html.write_text(f"<html><script>window.__INITIAL_STATE__={json.dumps(state, ensure_ascii=False)}</script></html>", encoding="utf-8")
+            run_cli(workspace, "import-benchmark", "--platform", "xiaohongshu", "--url", "https://www.xiaohongshu.com/user/profile/bench001", "--html-file", str(html))
+            run_cli(workspace, "segment-benchmark", "--benchmark-id", "bench001")
+            run_cli(workspace, "distill-creator", "--benchmark-id", "bench001")
+            run_cli(workspace, "today")
+            run_cli(workspace, "draft", "--platform", "xiaohongshu", "--topic", "AI工具教程")
+            precheck = json.loads(run_cli(workspace, "precheck", "--platform", "xiaohongshu", "--title", "AI工具教程", "--content", "content_id: xhs-001 CTA 转化 正文").stdout)
+            self.assertTrue(Path(precheck["report"]).exists())
+            run_cli(workspace, "post-review", "--content-id", "xhs-001")
+            growth = json.loads(run_cli(workspace, "self-growth").stdout)
+            run_cli(workspace, "approve-strategy", "--candidate-id", growth["candidates"][0]["candidate_id"])
+            readback_draft = json.loads(run_cli(workspace, "draft", "--platform", "xiaohongshu", "--topic", "AI工具教程复盘").stdout)
+            self.assertTrue(readback_draft["draft"]["strategy_context"])
+            audit = json.loads(run_cli(workspace, "workflow-audit").stdout)
+            self.assertTrue(audit["ok"])
+            self.assertTrue(all(item["status"] == "complete" for item in audit["items"].values()))
+
 
 if __name__ == "__main__":
     unittest.main()

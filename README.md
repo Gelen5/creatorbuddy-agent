@@ -48,8 +48,23 @@ python scripts\creatorbuddy.py import-benchmark --platform xiaohongshu --url "ht
 python scripts\creatorbuddy.py segment-benchmark --benchmark-id "benchmark-id"
 python scripts\creatorbuddy.py distill-creator --benchmark-id "benchmark-id"
 python scripts\creatorbuddy.py onboarding-status
+python scripts\creatorbuddy.py workflow-audit
 python scripts\creatorbuddy.py daily-run
 ```
+
+`workflow-audit` is the inner-test acceptance check for the commercial MVP loop. It verifies evidence for:
+
+1. first-use flow;
+2. account configuration center;
+3. content asset database;
+4. today's content opportunity report;
+5. Xiaohongshu draft and precheck loop;
+6. benchmark distillation;
+7. pre-publish check;
+8. post-publish review;
+9. strategy approval and self-growth readback.
+
+It returns `ok: true` only when the current workspace has durable files proving all nine items.
 
 Default workspace:
 
