@@ -6,7 +6,7 @@
   "timezone": "Asia/Shanghai",
   "onboarding": {
     "current_step": "connect_account",
-    "steps": ["connect_account", "choose_benchmark", "import_content", "start_growth"]
+    "steps": ["connect_account", "configure_profile", "choose_benchmark", "import_content", "start_growth"]
   },
   "default_collection_limit": 10,
   "review_offsets": ["2h", "24h", "48h", "7d"],
@@ -18,6 +18,9 @@
       "enabled": true,
       "positioning": "",
       "target_audience": "",
+      "content_directions": [],
+      "commercial_goal": "",
+      "core_product": "",
       "collect_own_account": true,
       "frequency": "daily",
       "collect_args": {},
@@ -35,6 +38,9 @@
       "enabled": true,
       "positioning": "",
       "target_audience": "",
+      "content_directions": [],
+      "commercial_goal": "",
+      "core_product": "",
       "collect_own_account": true,
       "frequency": "daily",
       "collect_args": {},
@@ -52,6 +58,9 @@
       "enabled": true,
       "positioning": "",
       "target_audience": "",
+      "content_directions": [],
+      "commercial_goal": "",
+      "core_product": "",
       "collect_own_account": true,
       "frequency": "daily",
       "collect_args": {},

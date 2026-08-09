@@ -106,9 +106,17 @@ def append_jsonl(path: Path, payload: dict[str, Any]) -> None:
 def parse_json_arg(raw: str, fallback: Any) -> Any:
     if not raw:
         return fallback
+    raw = raw.strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] == "'":
+        raw = raw[1:-1]
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
+        repaired = re.sub(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:", r'\1"\2":', raw)
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
         return {"raw_text": raw, "parse_status": "needs_data"}
 
 
@@ -178,12 +186,19 @@ def find_platform(config: dict[str, Any], platform: str) -> dict[str, Any] | Non
 def update_onboarding(config: dict[str, Any], workspace: Path) -> None:
     platforms = [item for item in config.get("platforms", []) if item.get("enabled", True)]
     connected = any(item.get("account_id") and item.get("collect_own_account", True) for item in platforms)
-    benchmarked = any(item.get("benchmark_industries") or item.get("benchmark_accounts") for item in platforms)
+    profiled = any(
+        item.get("account_id")
+        and item.get("positioning")
+        and item.get("target_audience")
+        and (item.get("content_directions") or item.get("benchmark_industries"))
+        for item in platforms
+    )
+    benchmarked = any(item.get("benchmark_accounts") for item in platforms)
     imported = len(read_jsonl(paths(workspace)["content"])) > 0
     grown = bool(read_json(paths(workspace)["scores"], []))
-    steps = [connected, benchmarked, imported, grown]
+    steps = [connected, profiled, benchmarked, imported, grown]
     config.setdefault("onboarding", {})["steps"] = [
-        "connect_account", "choose_benchmark", "import_content", "start_growth"
+        "connect_account", "configure_profile", "choose_benchmark", "import_content", "start_growth"
     ]
     config["onboarding"]["current_step"] = next(
         (step for step, complete in zip(config["onboarding"]["steps"], steps) if not complete),
@@ -353,6 +368,41 @@ def command_set_account(args: argparse.Namespace) -> int:
     update_onboarding(config, workspace)
     save_config(workspace, config)
     print(json.dumps({"ok": True, "platform": args.platform, "next_step": config["onboarding"]["current_step"]}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def split_csv(raw: str) -> list[str]:
+    if not raw:
+        return []
+    return [item.strip() for item in re.split(r"[,，\n]", raw) if item.strip()]
+
+
+def command_set_profile(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    config = load_config(workspace)
+    platform_cfg = find_platform(config, args.platform)
+    if platform_cfg is None:
+        raise SystemExit(f"未找到平台配置：{args.platform}")
+    updates: dict[str, Any] = {}
+    for key in ["positioning", "target_audience", "commercial_goal", "core_product"]:
+        value = getattr(args, key)
+        if value:
+            updates[key] = value
+    if args.content_directions:
+        updates["content_directions"] = split_csv(args.content_directions)
+    if args.keywords:
+        platform_cfg["benchmark_industries"] = split_csv(args.keywords)
+    if not updates and not args.keywords:
+        raise SystemExit("没有提供可更新的账号画像字段。")
+    platform_cfg.update(updates)
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+    print(json.dumps({
+        "ok": True,
+        "platform": args.platform,
+        "updated": sorted([*updates.keys(), *(["benchmark_industries"] if args.keywords else [])]),
+        "next_step": config["onboarding"]["current_step"],
+    }, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -634,24 +684,31 @@ def command_onboarding_status(args: argparse.Namespace) -> int:
     save_config(workspace, config)
     platforms = [item for item in config.get("platforms", []) if item.get("enabled", True)]
     connected = [item for item in platforms if item.get("account_id") and item.get("collect_own_account", True)]
-    benchmarked = [item for item in platforms if item.get("benchmark_industries") or item.get("benchmark_accounts")]
+    profiled = [
+        item for item in connected
+        if item.get("positioning") and item.get("target_audience") and (item.get("content_directions") or item.get("benchmark_industries"))
+    ]
+    benchmarked = [item for item in platforms if item.get("benchmark_accounts")]
     published_count = len(read_jsonl(paths(workspace)["content"]))
     scores_ready = bool(read_json(paths(workspace)["scores"], []))
     result = {
-        "ok": bool(connected and benchmarked and published_count > 0 and scores_ready),
+        "ok": bool(connected and profiled and benchmarked and published_count > 0 and scores_ready),
         "current_step": config["onboarding"]["current_step"],
         "steps": {
             "connect_account": bool(connected),
+            "configure_profile": bool(profiled),
             "choose_benchmark": bool(benchmarked),
             "import_content": published_count > 0,
             "start_growth": scores_ready,
         },
         "connected_platforms": [item.get("platform") for item in connected],
+        "profiled_platforms": [item.get("platform") for item in profiled],
         "published_content_count": published_count,
         "next_action": {
             "connect_account": "set-account",
+            "configure_profile": "set-profile",
             "choose_benchmark": "add-benchmark",
-            "import_content": "review",
+            "import_content": "add-content or review",
             "start_growth": "today",
         }.get(config["onboarding"]["current_step"], "today"),
     }
@@ -953,30 +1010,72 @@ def command_collect(args: argparse.Namespace) -> int:
 
 def command_today(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace or default_workspace())
-    require_account(workspace, args.allow_cold_start)
+    config = require_account(workspace, args.allow_cold_start)
     topics = args.topic or []
     candidates = generate_scores(workspace, topics)
     top = candidates[:5]
     report = paths(workspace)["reports"] / f"{datetime.now().strftime('%Y-%m-%d')}-今日内容机会.md"
-    lines = ["# 今日内容机会", "", f"生成时间：{now_iso()}", ""]
+    owned_count = len(read_jsonl(paths(workspace)["content"]))
+    signal_count = len(read_jsonl(paths(workspace)["signals"]))
+    benchmark_count = len(read_jsonl(paths(workspace)["benchmark_samples"]))
+    active_rule_count = len(read_json(paths(workspace)["active"], {"active_rules": []}).get("active_rules", []))
+    lines = [
+        "---",
+        "type: 今日内容机会报告",
+        "schema_version: 1",
+        f"created_at: {now_iso()}",
+        "---",
+        "",
+        "# 今日内容机会",
+        "",
+        "## 输入状态",
+        "",
+        f"- 自有内容资产：{owned_count} 条",
+        f"- 标准化公开信号：{signal_count} 条",
+        f"- 对标样本：{benchmark_count} 条",
+        f"- 已确认策略：{active_rule_count} 条",
+        f"- 账号目标：{config.get('goal', '待补充信息')}",
+        "",
+        "## 今日优先推荐",
+        "",
+    ]
     for idx, item in enumerate(top, start=1):
+        marketing = item.get("marketing_judgment", {})
         lines.extend(
             [
                 f"## {idx}. {platform_label(item['platform'])}｜{item['topic']}",
                 "",
                 f"- 推荐分：{item['score']}",
                 f"- 证据等级：{item['evidence_level']}",
+                f"- 目标用户：{marketing.get('target_audience', '待补充信息')}",
                 f"- 理由：{'；'.join(item['reasons'])}",
                 f"- 风险：{', '.join(item['risk']) if item['risk'] else '暂无明显风险'}",
-                f"- Offer：{item.get('marketing_judgment', {}).get('offer_brief', {}).get('promise', '待补充信息')}",
-                f"- 转化路径：{item.get('marketing_judgment', {}).get('conversion_path', {}).get('cta', '待补充信息')}",
-                f"- 归因计划：content_id + {', '.join(item.get('marketing_judgment', {}).get('attribution_plan', {}).get('conversion_fields', []))}",
+                f"- Offer：{marketing.get('offer_brief', {}).get('promise', '待补充信息')}",
+                f"- 内容策略：{marketing.get('content_strategy', {}).get('single_idea', item['topic'])}",
+                f"- 转化路径：{marketing.get('conversion_path', {}).get('cta', '待补充信息')}",
+                f"- 归因计划：content_id + {', '.join(marketing.get('attribution_plan', {}).get('conversion_fields', []))}",
+                f"- 下一步：`draft --platform {item['platform']} --topic \"{item['topic']}\"`",
                 "",
             ]
         )
+    lines.extend(
+        [
+            "## 证据边界",
+            "",
+            "- 推荐分用于排序，不代表爆款保证。",
+            "- 公开样本不等同于自己的后台数据。",
+            "- 缺少评论、私信、成交数据时，不做转化归因。",
+            "",
+            "## 下一步动作",
+            "",
+            "1. 选择 1 个推荐选题生成草稿。",
+            "2. 执行发布前检查。",
+            "3. 发布后用 `add-content` 或 `review` 记录指标、评论和转化。",
+        ]
+    )
     report.write_text("\n".join(lines), encoding="utf-8")
     append_jsonl(paths(workspace)["runs"], {"run_id": datetime.now().strftime("%Y%m%d%H%M%S"), "created_at": now_iso(), "report": str(report)})
-    print(json.dumps({"ok": True, "workspace": str(workspace), "report": str(report), "top": top}, ensure_ascii=False, indent=2))
+    print(json.dumps({"ok": True, "schema_version": 1, "workspace": str(workspace), "report": str(report), "top": top}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1129,6 +1228,43 @@ def command_precheck(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_add_content(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    load_config(workspace)
+    body = args.body or ""
+    if args.file:
+        body = Path(args.file).read_text(encoding="utf-8")
+    title = args.title.strip()
+    if not title:
+        raise SystemExit("内容标题不能为空。")
+    row = {
+        "schema_version": 1,
+        "content_id": args.content_id or f"{args.platform}-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "platform": args.platform,
+        "status": args.status,
+        "topic": args.topic or title,
+        "title": title,
+        "cover": args.cover or "",
+        "body": body,
+        "script": args.script or "",
+        "proof_assets": split_csv(args.proof_assets),
+        "product_bridge": args.product_bridge or "",
+        "published_at": args.published_at or "",
+        "metrics": parse_json_arg(args.metrics_json, {}),
+        "comments": parse_json_arg(args.comments_json, []),
+        "conversions": parse_json_arg(args.conversions_json, {}),
+        "review": args.review or "",
+        "next_change": args.next_change or "",
+        "lessons": split_csv(args.lessons),
+        "source": args.source or "manual_content_asset",
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    append_jsonl(paths(workspace)["content"], row)
+    print(json.dumps({"ok": True, "content_id": row["content_id"], "content_path": str(paths(workspace)["content"])}, ensure_ascii=False, indent=2))
+    return 0
+
+
 def command_review(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace or default_workspace())
     metrics: Any = parse_json_arg(args.metrics_json, {})
@@ -1150,6 +1286,85 @@ def command_review(args: argparse.Namespace) -> int:
     update_onboarding(config, workspace)
     save_config(workspace, config)
     print(json.dumps({"ok": True, "record": row}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def latest_content_by_id(workspace: Path, content_id: str) -> dict[str, Any] | None:
+    matches = [row for row in read_jsonl(paths(workspace)["content"]) if row.get("content_id") == content_id]
+    return matches[-1] if matches else None
+
+
+def diagnose_metrics(row: dict[str, Any]) -> tuple[str, list[str], list[str]]:
+    metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
+    comments = row.get("comments") if isinstance(row.get("comments"), list) else []
+    conversions = row.get("conversions") if isinstance(row.get("conversions"), dict) else {}
+    likes = int(metrics.get("likes", 0) or 0)
+    saves = int(metrics.get("saves", metrics.get("collects", 0)) or 0)
+    views = int(metrics.get("views", metrics.get("reads", metrics.get("plays", 0))) or 0)
+    dm_count = int(conversions.get("dm_count", conversions.get("inquiries", 0)) or 0)
+    lessons: list[str] = []
+    next_actions: list[str] = []
+    if views <= 0:
+        verdict = "待补充曝光数据"
+        lessons.append("复盘前必须补充曝光、阅读或播放数据。")
+        next_actions.append("补录 views/reads/plays 后重新复盘。")
+    elif likes + saves == 0:
+        verdict = "互动弱"
+        lessons.append("标题或开头没有形成足够点击和收藏理由。")
+        next_actions.append("下一条测试更具体的标题、封面承诺和前 3 行。")
+    elif saves >= likes:
+        verdict = "收藏价值较强"
+        lessons.append("保存型结构有效，后续可以增加清单、步骤、模板类内容。")
+        next_actions.append("复用保存型结构，并补充更明确的产品承接。")
+    else:
+        verdict = "有基础互动"
+        lessons.append("内容具备基础互动，下一步需要验证评论和转化。")
+        next_actions.append("补充置顶评论和低压 CTA，观察私信或咨询。")
+    if comments:
+        lessons.append("评论区已有反馈，应提炼用户原话作为下次选题输入。")
+    if dm_count > 0:
+        lessons.append("该内容产生私信/咨询，应进入转化型策略候选。")
+    return verdict, lessons, next_actions
+
+
+def command_post_review(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    load_config(workspace)
+    row = latest_content_by_id(workspace, args.content_id)
+    if row is None:
+        raise SystemExit(f"未找到 content_id：{args.content_id}")
+    verdict, lessons, next_actions = diagnose_metrics(row)
+    if args.lesson:
+        lessons.extend(split_csv(args.lesson))
+    reviewed = {
+        **row,
+        "status": "reviewed",
+        "review": args.review or verdict,
+        "review_status": "reviewed",
+        "next_change": args.next_change or "；".join(next_actions),
+        "lessons": list(dict.fromkeys([*(row.get("lessons") or []), *lessons])),
+        "reviewed_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    append_jsonl(paths(workspace)["content"], reviewed)
+    report = paths(workspace)["reports"] / f"{reviewed['content_id']}-post-review.md"
+    lines = [
+        f"# 发布后复盘｜{reviewed['title']}",
+        "",
+        f"- content_id: {reviewed['content_id']}",
+        f"- platform: {reviewed['platform']}",
+        f"- verdict: {verdict}",
+        f"- metrics: {json.dumps(reviewed.get('metrics', {}), ensure_ascii=False)}",
+        f"- conversions: {json.dumps(reviewed.get('conversions', {}), ensure_ascii=False)}",
+        "",
+        "## 经验",
+        *[f"- {lesson}" for lesson in reviewed["lessons"]],
+        "",
+        "## 下一次改法",
+        reviewed["next_change"] or "待补充信息",
+    ]
+    report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(json.dumps({"ok": True, "content_id": reviewed["content_id"], "report": str(report), "lessons": reviewed["lessons"]}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1369,6 +1584,16 @@ def build_parser() -> argparse.ArgumentParser:
     account.add_argument("--account-name", required=True)
     account.set_defaults(func=command_set_account)
 
+    profile = sub.add_parser("set-profile", help="更新平台账号画像：定位、用户、内容方向、商业目标和核心产品")
+    profile.add_argument("--platform", required=True)
+    profile.add_argument("--positioning", default="")
+    profile.add_argument("--target-audience", default="")
+    profile.add_argument("--content-directions", default="")
+    profile.add_argument("--commercial-goal", default="")
+    profile.add_argument("--core-product", default="")
+    profile.add_argument("--keywords", default="")
+    profile.set_defaults(func=command_set_profile)
+
     benchmark = sub.add_parser("add-benchmark", help="添加或更新一个对标账号")
     benchmark.add_argument("--platform", required=True)
     benchmark.add_argument("--account-id", required=True)
@@ -1424,6 +1649,28 @@ def build_parser() -> argparse.ArgumentParser:
     precheck.add_argument("--file", default="")
     precheck.set_defaults(func=command_precheck)
 
+    content = sub.add_parser("add-content", help="写入一条内容资产，可用于草稿、已发布内容和复盘沉淀")
+    content.add_argument("--platform", required=True)
+    content.add_argument("--title", required=True)
+    content.add_argument("--status", default="published", choices=["idea", "draft", "scheduled", "published", "reviewed"])
+    content.add_argument("--topic", default="")
+    content.add_argument("--cover", default="")
+    content.add_argument("--body", default="")
+    content.add_argument("--script", default="")
+    content.add_argument("--file", default="")
+    content.add_argument("--proof-assets", default="")
+    content.add_argument("--product-bridge", default="")
+    content.add_argument("--published-at", default="")
+    content.add_argument("--metrics-json", default="")
+    content.add_argument("--content-id", default="")
+    content.add_argument("--comments-json", default="")
+    content.add_argument("--conversions-json", default="")
+    content.add_argument("--review", default="")
+    content.add_argument("--next-change", default="")
+    content.add_argument("--lessons", default="")
+    content.add_argument("--source", default="")
+    content.set_defaults(func=command_add_content)
+
     review = sub.add_parser("review", help="record a published content item for later review")
     review.add_argument("--platform", required=True)
     review.add_argument("--title", required=True)
@@ -1435,6 +1682,13 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--conversions-json", default="")
     review.add_argument("--lessons-json", default="")
     review.set_defaults(func=command_review)
+
+    post_review = sub.add_parser("post-review", help="按 content_id 生成发布后复盘并写回经验")
+    post_review.add_argument("--content-id", required=True)
+    post_review.add_argument("--review", default="")
+    post_review.add_argument("--next-change", default="")
+    post_review.add_argument("--lesson", default="")
+    post_review.set_defaults(func=command_post_review)
 
     due = sub.add_parser("review-due", help="生成 2h/24h/48h/7d 到期复盘提醒")
     due.set_defaults(func=command_review_due)

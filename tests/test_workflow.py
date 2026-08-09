@@ -38,6 +38,22 @@ class WorkflowSmokeTest(unittest.TestCase):
             workspace = Path(directory)
             run_cli(workspace, "init")
             run_cli(workspace, "set-account", "--platform", "xiaohongshu", "--account-id", "own-1", "--account-name", "测试账号")
+            run_cli(
+                workspace,
+                "set-profile",
+                "--platform",
+                "xiaohongshu",
+                "--positioning",
+                "帮助普通人用 AI 做内容",
+                "--target-audience",
+                "自媒体新手",
+                "--content-directions",
+                "AI工具教程,案例复盘",
+                "--commercial-goal",
+                "内容获客",
+                "--core-product",
+                "AI训练营",
+            )
             run_cli(workspace, "add-benchmark", "--platform", "xiaohongshu", "--account-id", "bench-1", "--account-name", "测试对标")
             signal = workspace / "signal.json"
             signal.write_text(json.dumps({"platform": "xiaohongshu", "topic": "AI工具教程", "heat": 22, "source": "test-adapter"}), encoding="utf-8")
@@ -47,6 +63,95 @@ class WorkflowSmokeTest(unittest.TestCase):
             self.assertTrue((workspace / "data" / "normalized_signals.jsonl").exists())
             self.assertTrue((workspace / "data" / "review_reminders.jsonl").exists())
             self.assertTrue((workspace / "data" / "run_log.jsonl").exists())
+            today = json.loads(run_cli(workspace, "today").stdout)
+            report_text = Path(today["report"]).read_text(encoding="utf-8")
+            self.assertIn("## 输入状态", report_text)
+            self.assertIn("## 今日优先推荐", report_text)
+            self.assertIn("## 证据边界", report_text)
+            self.assertIn("## 下一步动作", report_text)
+
+    def test_profile_and_content_asset_complete_onboarding_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            run_cli(workspace, "set-account", "--platform", "xiaohongshu", "--account-id", "own-1", "--account-name", "测试账号")
+            status = json.loads(run_cli(workspace, "onboarding-status").stdout)
+            self.assertEqual(status["current_step"], "configure_profile")
+
+            profile = json.loads(run_cli(
+                workspace,
+                "set-profile",
+                "--platform",
+                "xiaohongshu",
+                "--positioning",
+                "帮助普通人用 AI 做内容",
+                "--target-audience",
+                "自媒体新手",
+                "--content-directions",
+                "AI工具教程,案例复盘",
+                "--commercial-goal",
+                "内容获客",
+                "--core-product",
+                "AI训练营",
+                "--keywords",
+                "AI工具教程,普通人AI副业",
+            ).stdout)
+            self.assertIn("configure_profile", json.loads(run_cli(workspace, "onboarding-status").stdout)["steps"])
+            self.assertEqual(profile["next_step"], "choose_benchmark")
+            run_cli(workspace, "add-benchmark", "--platform", "xiaohongshu", "--account-id", "bench-1", "--account-name", "测试对标")
+            content = json.loads(run_cli(
+                workspace,
+                "add-content",
+                "--platform",
+                "xiaohongshu",
+                "--title",
+                "AI工具教程第一篇",
+                "--topic",
+                "AI工具教程",
+                "--body",
+                "正文",
+                "--proof-assets",
+                "截图,流程",
+                "--product-bridge",
+                "AI训练营",
+                "--metrics-json",
+                "{\"likes\": 3}",
+                "--lessons",
+                "标题要更具体",
+            ).stdout)
+            self.assertTrue(content["ok"])
+            rows = (workspace / "data" / "published_content.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(rows), 1)
+            row = json.loads(rows[0])
+            self.assertEqual(row["proof_assets"], ["截图", "流程"])
+            self.assertEqual(row["lessons"], ["标题要更具体"])
+
+            loose = json.loads(run_cli(
+                workspace,
+                "add-content",
+                "--platform",
+                "xiaohongshu",
+                "--title",
+                "PowerShell JSON 容错",
+                "--metrics-json",
+                "{views:100,likes:3,saves:6}",
+            ).stdout)
+            self.assertTrue(loose["ok"])
+            loose_row = json.loads((workspace / "data" / "published_content.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+            self.assertEqual(loose_row["metrics"]["views"], 100)
+
+    def test_post_review_writes_lessons_for_self_growth(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            run_cli(workspace, "set-account", "--platform", "xiaohongshu", "--account-id", "own-1", "--account-name", "测试账号")
+            run_cli(workspace, "add-content", "--platform", "xiaohongshu", "--content-id", "xhs-001", "--title", "AI工具教程", "--metrics-json", "{\"views\":100,\"likes\":3,\"saves\":6}")
+            reviewed = json.loads(run_cli(workspace, "post-review", "--content-id", "xhs-001").stdout)
+            self.assertTrue(Path(reviewed["report"]).exists())
+            self.assertTrue(reviewed["lessons"])
+            growth = json.loads(run_cli(workspace, "self-growth").stdout)
+            self.assertTrue(growth["candidates"])
+            self.assertIn("review-lesson-xhs-001", growth["candidates"][0]["candidate_id"])
 
     def test_strategy_is_read_by_next_draft(self):
         with tempfile.TemporaryDirectory() as directory:

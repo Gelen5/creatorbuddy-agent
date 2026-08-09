@@ -134,9 +134,10 @@ Then complete the four-step onboarding path:
 
 ```powershell
 python scripts/creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
+python scripts/creatorbuddy.py set-profile --platform xiaohongshu --positioning "账号定位" --target-audience "目标用户" --content-directions "内容方向1,内容方向2" --commercial-goal "商业目标" --core-product "核心产品"
 python scripts/creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"
 python scripts/creatorbuddy.py onboarding-status
-python scripts/creatorbuddy.py review --platform xiaohongshu --title "第一条已发布内容" --metrics-json '{"likes":0,"comments":0}'
+python scripts/creatorbuddy.py add-content --platform xiaohongshu --title "第一条内容资产" --body "正文或脚本" --metrics-json '{"likes":0,"comments":0}'
 python scripts/creatorbuddy.py today
 ```
 
