@@ -107,6 +107,8 @@ Open:
 http://localhost:5174
 ```
 
+首次使用网页端时，进入 `账号中心`，填写初始化表单并点击 `完成初始化`。网页会调用同一个 CLI `quickstart`，自动写入账号配置、对标账号和第一条内容资产。
+
 If Node is not in PATH, set:
 
 ```powershell

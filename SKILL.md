@@ -275,3 +275,5 @@ The web MVP must stay focused on five usable console pages:
 - 内容机会：今日选题报告、评分和证据；
 - 内容库：已发布内容和数据；
 - 复盘中心：表现分析、策略候选和自成长沉淀。
+
+The 账号中心 page must expose a first-use form that calls `/api/quickstart`, which delegates to `python scripts/creatorbuddy.py quickstart --non-interactive`. Do not write account configuration directly in browser-only logic.

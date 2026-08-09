@@ -149,6 +149,48 @@ async function refreshScores() {
   await loadDashboard();
 }
 
+function formValue(form, name) {
+  return String(new FormData(form).get(name) || "").trim();
+}
+
+async function submitQuickstart(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type='submit']");
+  const payload = {
+    owner: formValue(form, "owner"),
+    platform: formValue(form, "platform"),
+    accountName: formValue(form, "accountName"),
+    accountId: formValue(form, "accountId"),
+    positioning: formValue(form, "positioning"),
+    targetAudience: formValue(form, "targetAudience"),
+    contentDirections: formValue(form, "contentDirections"),
+    commercialGoal: formValue(form, "commercialGoal"),
+    coreProduct: formValue(form, "coreProduct"),
+    keywords: formValue(form, "keywords"),
+    benchmarkName: formValue(form, "benchmarkName"),
+    benchmarkUrl: formValue(form, "benchmarkUrl"),
+    firstTitle: formValue(form, "firstTitle"),
+    firstBody: formValue(form, "firstBody")
+  };
+  button.disabled = true;
+  button.textContent = "正在初始化";
+  try {
+    toast("正在写入账号配置和第一条内容资产...");
+    const result = await api("/api/quickstart", { method: "POST", body: payload });
+    state.dashboard = result.dashboard || (await api("/api/dashboard"));
+    renderShell(state.dashboard);
+    renderRecommendation(state.dashboard);
+    renderEvidence(state.dashboard.evidence || []);
+    renderStatus(state.dashboard.platformStatus || []);
+    renderCurrentSection();
+    toast("初始化完成。下一步可以生成今日机会。");
+  } finally {
+    button.disabled = false;
+    button.textContent = "完成初始化";
+  }
+}
+
 async function precheckSample() {
   const item = state.dashboard?.recommendation;
   if (!item) {
@@ -273,7 +315,77 @@ function renderAccountPage(data) {
   const platforms = data.config?.platforms || [];
   const owner = data.config?.owner || "待补充";
   const productKeywords = data.config?.product_keywords || [];
+  const primaryPlatform = platforms.find((item) => item.account_name || item.positioning) || platforms[0] || {};
   return `
+    <form class="quickstart-form" id="quickstartForm">
+      <div class="form-head">
+        <div>
+          <div class="muted-label">首次初始化</div>
+          <h2>把你的账号交给 CreatorBuddy</h2>
+        </div>
+        <button class="primary-button" type="submit">完成初始化</button>
+      </div>
+      <div class="form-grid">
+        <label>
+          <span>你是谁</span>
+          <input name="owner" value="${escapeAttr(data.config?.owner || "")}" placeholder="例如：Gelen / 张三 / 某某工作室" />
+        </label>
+        <label>
+          <span>主平台</span>
+          <select name="platform">
+            ${renderPlatformOptions(primaryPlatform.platform || "xiaohongshu")}
+          </select>
+        </label>
+        <label>
+          <span>账号名称</span>
+          <input name="accountName" value="${escapeAttr(primaryPlatform.account_name || "")}" placeholder="例如：Gelen AI成长" required />
+        </label>
+        <label>
+          <span>账号 ID / 备注</span>
+          <input name="accountId" value="${escapeAttr(primaryPlatform.account_id || "")}" placeholder="没有就填账号名" />
+        </label>
+        <label class="wide">
+          <span>账号定位</span>
+          <input name="positioning" value="${escapeAttr(primaryPlatform.positioning || "")}" placeholder="例如：帮助普通人快速学习 AI 并实现内容获客" required />
+        </label>
+        <label>
+          <span>目标用户</span>
+          <input name="targetAudience" value="${escapeAttr(primaryPlatform.target_audience || "")}" placeholder="例如：自媒体新手、知识付费创业者" required />
+        </label>
+        <label>
+          <span>内容方向</span>
+          <input name="contentDirections" value="${escapeAttr((primaryPlatform.content_directions || []).join("，"))}" placeholder="多个用逗号隔开" required />
+        </label>
+        <label>
+          <span>商业目标</span>
+          <input name="commercialGoal" value="${escapeAttr(primaryPlatform.commercial_goal || "")}" placeholder="例如：内容获客、私信咨询、课程成交" />
+        </label>
+        <label>
+          <span>核心产品</span>
+          <input name="coreProduct" value="${escapeAttr(primaryPlatform.core_product || "")}" placeholder="例如：AI训练营 / 咨询 / Skill" />
+        </label>
+        <label>
+          <span>行业关键词</span>
+          <input name="keywords" value="${escapeAttr((primaryPlatform.benchmark_industries || []).join("，"))}" placeholder="例如：AI工具教程、AI变现" />
+        </label>
+        <label>
+          <span>对标账号</span>
+          <input name="benchmarkName" value="${escapeAttr((primaryPlatform.benchmark_accounts || [])[0]?.account_name || "")}" placeholder="填一个你想参考的账号" />
+        </label>
+        <label class="wide">
+          <span>对标主页链接</span>
+          <input name="benchmarkUrl" value="${escapeAttr((primaryPlatform.benchmark_accounts || [])[0]?.url || "")}" placeholder="可选，后续用于对标采集" />
+        </label>
+        <label>
+          <span>发过的一条内容</span>
+          <input name="firstTitle" placeholder="标题，可选" />
+        </label>
+        <label>
+          <span>正文 / 脚本</span>
+          <input name="firstBody" placeholder="可选，先贴一小段也行" />
+        </label>
+      </div>
+    </form>
     <div class="detail-grid">
       <div class="detail-block">
         <div class="muted-label">我是谁</div>
@@ -305,6 +417,16 @@ function renderAccountPage(data) {
         .join("")}
     </div>
   `;
+}
+
+function renderPlatformOptions(selected) {
+  return Object.entries(platformName)
+    .map(([value, label]) => `<option value="${escapeAttr(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>`)
+    .join("");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/'/g, "&#39;");
 }
 
 function renderOpportunitiesPage(data) {
@@ -432,6 +554,11 @@ function bindEvents() {
   for (const item of document.querySelectorAll(".nav-item")) {
     item.addEventListener("click", () => goSection(item.dataset.section));
   }
+  document.addEventListener("submit", (event) => {
+    if (event.target?.id === "quickstartForm") {
+      submitQuickstart(event).catch((error) => toast(error.message));
+    }
+  });
 }
 
 window.creatorBuddyCreateDraft = () => createDraft().catch((error) => toast(error.message));

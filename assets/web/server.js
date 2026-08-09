@@ -148,6 +148,13 @@ function runAgent(args, timeoutMs = 120000) {
   });
 }
 
+function appendArg(args, flag, value) {
+  if (value === undefined || value === null) return;
+  const text = String(value).trim();
+  if (!text) return;
+  args.push(flag, text);
+}
+
 async function readDashboard() {
   const config = await readJson(CONFIG_PATH, {
     workspace_id: "default-workspace",
@@ -226,6 +233,57 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/dashboard") {
     return sendJson(res, 200, await readDashboard());
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/quickstart") {
+    const body = await parseBody(req);
+    const required = [
+      ["accountName", "账号名称"],
+      ["positioning", "账号定位"],
+      ["targetAudience", "目标用户"],
+      ["contentDirections", "内容方向"]
+    ];
+    const missing = required
+      .filter(([key]) => !String(body[key] || "").trim())
+      .map(([, label]) => label);
+    if (missing.length) {
+      return sendJson(res, 400, { ok: false, error: `请补充：${missing.join("、")}` });
+    }
+    const args = ["quickstart", "--non-interactive"];
+    appendArg(args, "--owner", body.owner);
+    appendArg(args, "--platform", body.platform || "xiaohongshu");
+    appendArg(args, "--account-id", body.accountId || body.accountName);
+    appendArg(args, "--account-name", body.accountName);
+    appendArg(args, "--positioning", body.positioning);
+    appendArg(args, "--target-audience", body.targetAudience);
+    appendArg(args, "--content-directions", body.contentDirections);
+    appendArg(args, "--commercial-goal", body.commercialGoal);
+    appendArg(args, "--core-product", body.coreProduct);
+    appendArg(args, "--keywords", body.keywords);
+    appendArg(args, "--benchmark-name", body.benchmarkName);
+    appendArg(args, "--benchmark-id", body.benchmarkId || body.benchmarkName);
+    appendArg(args, "--benchmark-url", body.benchmarkUrl);
+    appendArg(args, "--first-title", body.firstTitle);
+    appendArg(args, "--first-topic", body.firstTopic);
+    appendArg(args, "--first-body", body.firstBody);
+    appendArg(args, "--first-content-id", body.firstContentId);
+    appendArg(args, "--first-published-at", body.firstPublishedAt);
+    appendArg(args, "--first-metrics-json", body.firstMetricsJson);
+    const result = await runAgent(args, 120000);
+    let quickstart = null;
+    try {
+      quickstart = JSON.parse(result.stdout);
+    } catch {
+      quickstart = null;
+    }
+    return sendJson(res, result.ok ? 200 : 500, {
+      ok: result.ok,
+      code: result.code,
+      quickstart,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      dashboard: result.ok ? await readDashboard() : null
+    });
   }
 
   if (req.method === "POST" && url.pathname === "/api/daily-run") {
