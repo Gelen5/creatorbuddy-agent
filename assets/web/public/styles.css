@@ -589,6 +589,47 @@ h1 {
   margin-top: 24px;
 }
 
+.publish-result {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.publish-result-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.publish-result-head strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 16px;
+}
+
+.publish-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.publish-result code {
+  display: block;
+  max-width: 100%;
+  margin-top: 12px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .quickstart-form {
   margin-bottom: 42px;
   padding-bottom: 34px;

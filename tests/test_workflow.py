@@ -302,6 +302,20 @@ class WorkflowSmokeTest(unittest.TestCase):
             self.assertIn("ARTICLE HTML START", text)
             self.assertIn("复制带样式 HTML", text)
             self.assertTrue(Path(result["precheck_report"]).exists())
+            self.assertTrue(result["content_id"].startswith("wechat-mp-draft-"))
+            rows = [json.loads(line) for line in (workspace / "data" / "published_content.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(rows[-1]["status"], "draft")
+            self.assertEqual(rows[-1]["source"], "wechat_publisher_adapter")
+            self.assertEqual(rows[-1]["publish_adapter"]["preview_path"], result["preview_path"])
+
+    def test_wechat_publisher_doctor_reports_dependency_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            doctor = json.loads(run_cli(workspace, "wechat-publisher-doctor", check=False).stdout)
+            self.assertIn("publisher_installed", doctor["checks"])
+            self.assertIn("node_available", doctor["checks"])
+            self.assertIn("copy-preview 不需要公众号凭证", doctor["note"])
 
     def test_wechat_publisher_adapter_supports_component_layout(self):
         with tempfile.TemporaryDirectory() as directory:

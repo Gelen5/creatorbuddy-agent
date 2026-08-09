@@ -155,6 +155,15 @@ function appendArg(args, flag, value) {
   args.push(flag, text);
 }
 
+function toPublicFile(filePath) {
+  if (!filePath) return "";
+  const absolute = path.resolve(filePath);
+  const vaultRoot = path.resolve(VAULT);
+  const relative = path.relative(vaultRoot, absolute);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return "";
+  return `/file/${encodeURIComponent(path.relative(vaultRoot, absolute).replace(/\\/g, "/"))}`;
+}
+
 async function readDashboard() {
   const config = await readJson(CONFIG_PATH, {
     workspace_id: "default-workspace",
@@ -362,6 +371,24 @@ async function handleApi(req, res, url) {
       ok: result.ok,
       code: result.code,
       publisher: payload,
+      previewUrl: payload?.preview_path ? toPublicFile(payload.preview_path) : "",
+      stdout: result.stdout,
+      stderr: result.stderr
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wechat-publisher-doctor") {
+    const result = await runAgent(["wechat-publisher-doctor"], 60000);
+    let payload = null;
+    try {
+      payload = JSON.parse(result.stdout);
+    } catch {
+      payload = null;
+    }
+    return sendJson(res, result.ok ? 200 : 200, {
+      ok: result.ok,
+      code: result.code,
+      doctor: payload,
       stdout: result.stdout,
       stderr: result.stderr
     });
@@ -463,10 +490,34 @@ async function serveStatic(req, res, url) {
   }
 }
 
+async function serveWorkspaceFile(req, res, url) {
+  const relative = decodeURIComponent(url.pathname.slice("/file/".length));
+  const normalizedRelative = relative.replace(/[\\/]+/g, path.sep);
+  const target = path.normalize(path.join(VAULT, normalizedRelative));
+  const back = path.relative(path.resolve(VAULT), target);
+  if (back.startsWith("..") || path.isAbsolute(back)) return send(res, 403, "Forbidden");
+  try {
+    const stat = await fsp.stat(target);
+    if (!stat.isFile()) throw new Error("not file");
+    const ext = path.extname(target).toLowerCase();
+    const types = {
+      ".html": "text/html; charset=utf-8",
+      ".json": "application/json; charset=utf-8",
+      ".md": "text/markdown; charset=utf-8",
+      ".txt": "text/plain; charset=utf-8"
+    };
+    res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream", "Cache-Control": "no-store" });
+    fs.createReadStream(target).pipe(res);
+  } catch {
+    send(res, 404, "Not found");
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   try {
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
+    if (url.pathname.startsWith("/file/")) return await serveWorkspaceFile(req, res, url);
     return await serveStatic(req, res, url);
   } catch (error) {
     return sendJson(res, 500, { ok: false, error: String(error.message || error) });

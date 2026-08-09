@@ -249,7 +249,34 @@ async function createWechatPreview() {
     }
   });
   state.publisher = result.publisher;
-  toast(`公众号预览已生成：${result.publisher?.preview_path || "查看 publish/wechat-mp 目录"}`);
+  renderWechatPublishResult(result.publisher, result.previewUrl);
+  await loadDashboard();
+  toast("公众号预览已生成，并已写入内容库。");
+}
+
+function renderWechatPublishResult(publisher, previewUrl = "") {
+  const box = $("wechatPublishResult");
+  if (!publisher) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="publish-result-head">
+      <div>
+        <div class="muted-label">公众号预览</div>
+        <strong>${escapeHtml(publisher.title || "已生成预览")}</strong>
+      </div>
+      ${previewUrl ? `<a class="secondary-button" href="${escapeAttr(previewUrl)}" target="_blank" rel="noreferrer">打开预览</a>` : ""}
+    </div>
+    <div class="publish-result-meta">
+      <span>内容库：${escapeHtml(publisher.content_id || "已记录")}</span>
+      <span>排版：${escapeHtml(publisher.layout || "component")}</span>
+      <span>检查：${escapeHtml(publisher.precheck?.verdict || "待确认")}</span>
+    </div>
+    <code>${escapeHtml(publisher.preview_path || "")}</code>
+  `;
 }
 
 function renderDraft(draft) {
@@ -257,6 +284,7 @@ function renderDraft(draft) {
   $("draftTitle").textContent = `${draft.platformLabel} · ${draft.title}`;
   $("draftOpening").textContent = draft.opening;
   $("wechatPreviewButton").hidden = draft.platform !== "wechat-mp";
+  renderWechatPublishResult(null);
   $("draftStructure").innerHTML = "";
   $("draftChecklist").innerHTML = "";
   for (const item of draft.structure || []) {

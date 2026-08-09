@@ -1528,6 +1528,49 @@ def resolve_wechat_publisher_dir() -> Path | None:
     return None
 
 
+def command_wechat_publisher_doctor(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    publisher_dir = resolve_wechat_publisher_dir()
+    npx = shutil.which("npx.cmd") or shutil.which("npx")
+    node = shutil.which("node")
+    app_id = bool(os.environ.get("WECHAT_APP_ID"))
+    app_secret = bool(os.environ.get("WECHAT_APP_SECRET"))
+    cover_exists = bool(args.cover and Path(args.cover).exists())
+    checks = {
+        "publisher_installed": bool(publisher_dir),
+        "publish_ts": bool(publisher_dir and (publisher_dir / "scripts" / "publish.ts").exists()),
+        "node_available": bool(node),
+        "npx_available": bool(npx),
+        "wechat_app_id_present": app_id,
+        "wechat_app_secret_present": app_secret,
+        "cover_exists": cover_exists if args.cover else None,
+        "ip_whitelist_required": "需要在公众号后台配置当前机器公网 IP；doctor 不会自动验证白名单。",
+    }
+    missing = []
+    if not checks["publisher_installed"]:
+        missing.append("安装 wechat-publisher skill，或设置 CREATORBUDDY_WECHAT_PUBLISHER_DIR")
+    if not checks["node_available"] or not checks["npx_available"]:
+        missing.append("安装 Node.js / npx")
+    if not app_id:
+        missing.append("配置 WECHAT_APP_ID")
+    if not app_secret:
+        missing.append("配置 WECHAT_APP_SECRET")
+    if args.cover and not cover_exists:
+        missing.append("确认封面图路径存在")
+    payload = {
+        "ok": bool(checks["publisher_installed"] and checks["node_available"] and checks["npx_available"] and app_id and app_secret),
+        "workspace": str(workspace),
+        "publisher_dir": str(publisher_dir) if publisher_dir else "",
+        "node": node or "",
+        "npx": npx or "",
+        "checks": checks,
+        "missing": missing,
+        "note": "copy-preview 不需要公众号凭证；只有 --send-draft 才需要 AppID/AppSecret、IP 白名单和封面图。",
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0 if payload["ok"] else 1
+
+
 def split_paragraphs(content: str) -> list[str]:
     parts = [part.strip() for part in re.split(r"\n\s*\n", content.strip()) if part.strip()]
     if parts:
@@ -1696,6 +1739,45 @@ def render_wechat_component_article(title: str, paragraphs: list[str], safe_auth
 """.strip()
 
 
+def record_wechat_publish_asset(workspace: Path, title: str, content: str, preview: Path, precheck_report: Path, layout: str) -> str:
+    content_id = f"wechat-mp-draft-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    row = {
+        "schema_version": 1,
+        "content_id": content_id,
+        "platform": "wechat-mp",
+        "status": "draft",
+        "topic": title,
+        "title": title,
+        "cover": "",
+        "body": content,
+        "script": "",
+        "proof_assets": [str(precheck_report)],
+        "product_bridge": "",
+        "published_at": "",
+        "metrics": {},
+        "comments": [],
+        "conversions": {},
+        "review": "",
+        "next_change": "打开公众号预览，复制到公众号后台，发布后补录数据并复盘。",
+        "lessons": [],
+        "source": "wechat_publisher_adapter",
+        "publish_adapter": {
+            "name": "wechat-publisher",
+            "mode": "copy-preview",
+            "layout": layout,
+            "preview_path": str(preview),
+            "precheck_report": str(precheck_report),
+        },
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    append_jsonl(paths(workspace)["content"], row)
+    config = load_config(workspace)
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+    return content_id
+
+
 def command_wechat_publish(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace or default_workspace())
     load_config(workspace)
@@ -1722,6 +1804,7 @@ def command_wechat_publish(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     preview = out_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{safe_slug(title, 'wechat-article')}.html"
     preview.write_text(render_wechat_article_html(title, content, args.author, args.digest, layout), encoding="utf-8")
+    content_id = record_wechat_publish_asset(workspace, title, content, preview, precheck_report, layout)
 
     publisher_dir = resolve_wechat_publisher_dir()
     payload: dict[str, Any] = {
@@ -1731,6 +1814,7 @@ def command_wechat_publish(args: argparse.Namespace) -> int:
         "mode": "copy-preview",
         "layout": layout,
         "title": title,
+        "content_id": content_id,
         "preview_path": str(preview),
         "precheck": precheck,
         "precheck_report": str(precheck_report),
@@ -2246,6 +2330,10 @@ def build_parser() -> argparse.ArgumentParser:
     precheck.add_argument("--content", default="")
     precheck.add_argument("--file", default="")
     precheck.set_defaults(func=command_precheck)
+
+    wechat_doctor = sub.add_parser("wechat-publisher-doctor", help="检测公众号草稿箱发布适配器依赖和凭证状态")
+    wechat_doctor.add_argument("--cover", default="", help="可选：检测封面图路径是否存在")
+    wechat_doctor.set_defaults(func=command_wechat_publisher_doctor)
 
     wechat_publish = sub.add_parser("wechat-publish", help="调用 wechat-publisher 适配器生成公众号复制预览，可选一键写入草稿箱")
     wechat_publish.add_argument("--title", default="")

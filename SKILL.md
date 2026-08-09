@@ -84,10 +84,12 @@ Evidence boundary:
 CreatorBuddy can route WeChat Official Account publishing work to `wechat-publisher` without turning publisher into the growth brain.
 
 ```powershell
+python scripts/creatorbuddy.py wechat-publisher-doctor
 python scripts/creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文"
 ```
 
 Default mode is `copy-preview`: CreatorBuddy writes a WeChat-compatible HTML preview under `publish/wechat-mp/`, with `ARTICLE HTML START/END` markers and a copy button. This mode requires no WeChat credentials.
+After a successful copy-preview, CreatorBuddy records a `wechat-mp` content asset with `status: draft`, `source: wechat_publisher_adapter`, and the preview/precheck paths.
 
 Layout options:
 

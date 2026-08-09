@@ -28,8 +28,27 @@ Default output:
 
 - `reports/*-wechat-mp-precheck.json`
 - `publish/wechat-mp/*.html`
+- a `data/published_content.jsonl` row with `platform: wechat-mp`, `status: draft`, and `source: wechat_publisher_adapter`
 
 The HTML preview includes `ARTICLE HTML START/END` markers and a copy button. It does not require WeChat credentials.
+
+## Doctor
+
+```powershell
+python scripts\creatorbuddy.py wechat-publisher-doctor
+```
+
+Checks:
+
+- installed publisher skill;
+- `publish.ts`;
+- Node.js;
+- `npx`;
+- `WECHAT_APP_ID`;
+- `WECHAT_APP_SECRET`;
+- optional cover image path.
+
+Doctor can fail while copy-preview still works. Credentials are required only for `--send-draft`.
 
 ## Layout Options
 
