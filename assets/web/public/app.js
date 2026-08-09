@@ -152,7 +152,7 @@ function formValue(form, name) {
 
 async function submitQuickstart(event) {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = event.target;
   const button = form.querySelector("button[type='submit']");
   const payload = {
     owner: formValue(form, "owner"),
@@ -191,7 +191,7 @@ async function submitQuickstart(event) {
 
 async function submitCollect(event) {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = event.target;
   const button = form.querySelector("button[type='submit']");
   const payload = {
     platform: formValue(form, "collectPlatform"),
