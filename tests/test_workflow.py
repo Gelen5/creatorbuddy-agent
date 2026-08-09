@@ -303,6 +303,41 @@ class WorkflowSmokeTest(unittest.TestCase):
             self.assertIn("复制带样式 HTML", text)
             self.assertTrue(Path(result["precheck_report"]).exists())
 
+    def test_wechat_publisher_adapter_supports_component_layout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            run_cli(workspace, "set-account", "--platform", "wechat-mp", "--account-id", "wx-1", "--account-name", "测试公众号")
+            run_cli(
+                workspace,
+                "set-profile",
+                "--platform",
+                "wechat-mp",
+                "--positioning",
+                "帮助普通人用 AI 做内容",
+                "--target-audience",
+                "自媒体新手",
+                "--content-directions",
+                "AI工具教程,案例复盘",
+            )
+            result = json.loads(run_cli(
+                workspace,
+                "wechat-publish",
+                "--title",
+                "AI工具教程组件排版",
+                "--content",
+                "开场说明\n\n第一步：确定任务\n\n第二步：生成草稿\n\n第三步：复盘优化",
+                "--layout",
+                "component",
+            ).stdout)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["layout"], "component")
+            text = Path(result["preview_path"]).read_text(encoding="utf-8")
+            self.assertIn("CREATORBUDDY · 公众号", text)
+            self.assertIn("PART", text)
+            self.assertIn("#内容增长", text)
+            self.assertIn("linear-gradient(90deg,#059669,#10B981)", text)
+
     def test_import_segment_and_distill_xiaohongshu_benchmark(self):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)

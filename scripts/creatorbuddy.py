@@ -1535,45 +1535,8 @@ def split_paragraphs(content: str) -> list[str]:
     return [line.strip() for line in content.splitlines() if line.strip()]
 
 
-def render_wechat_article_html(title: str, content: str, author: str = "", digest: str = "") -> str:
+def render_wechat_preview_document(title: str, article: str) -> str:
     safe_title = html.escape(title)
-    safe_author = html.escape(author or "CreatorBuddy")
-    safe_digest = html.escape(digest or "由 CreatorBuddy 生成的公众号发布预览，请在后台预览后再发布。")
-    paragraphs = split_paragraphs(content)
-    if not paragraphs:
-        paragraphs = ["待补充正文。"]
-    body_blocks = []
-    for index, paragraph in enumerate(paragraphs, start=1):
-        escaped = html.escape(paragraph).replace("\n", "<br />")
-        if re.match(r"^(#{1,3}\s+|[一二三四五六七八九十]+[、.．]|[0-9]+[、.．])", paragraph):
-            heading = re.sub(r"^#{1,3}\s+", "", paragraph)
-            safe_heading = html.escape(heading)
-            body_blocks.append(
-                f'<section style="display:flex;align-items:center;gap:10px;margin:22px 0 10px;">'
-                f'<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#1f3d35;color:#fff;font-size:13px;font-weight:800;">{index}</span>'
-                f'<p style="margin:0;font-size:16px;line-height:1.55;color:#1d1d1f;font-weight:700;">{safe_heading}</p>'
-                f'</section>'
-            )
-        else:
-            body_blocks.append(f'<p style="margin:12px 0;font-size:15px;line-height:1.85;color:#242624;">{escaped}</p>')
-
-    article = f"""
-<section style="margin:0 auto;padding:24px 20px 32px;max-width:677px;background:#fff;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;font-size:15px;line-height:1.8;letter-spacing:0;">
-  <section style="margin:0 0 22px;padding:28px 20px;border-radius:14px;background:#14241f;text-align:center;">
-    <p style="margin:0 0 8px;font-size:11px;line-height:1.6;color:rgba(255,255,255,0.42);font-weight:600;letter-spacing:3px;">CREATORBUDDY · 公众号</p>
-    <p style="margin:0 0 10px;font-size:21px;line-height:1.38;color:#fff;font-weight:800;">{safe_title}</p>
-    <p style="margin:0;font-size:13px;line-height:1.7;color:rgba(255,255,255,0.62);">{safe_digest}</p>
-  </section>
-  <h1 style="display:none;">{safe_title}</h1>
-  <p style="margin:0 0 18px;font-size:13px;line-height:1.7;color:#7a7d78;">作者：{safe_author}</p>
-  {''.join(body_blocks)}
-  <section style="margin:26px 0 0;padding:18px;border-radius:10px;background:#f4f7f5;border:1px solid #e2ebe6;">
-    <p style="margin:0 0 8px;font-size:16px;line-height:1.5;color:#1f3d35;font-weight:750;">发布前确认</p>
-    <p style="margin:8px 0 0;font-size:14px;line-height:1.75;color:#4f5b55;">请在公众号后台预览标题、封面、摘要、图片和移动端换行后再发布。CreatorBuddy 只负责生成发布物料，不替代最终人工确认。</p>
-  </section>
-</section>
-""".strip()
-
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -1622,6 +1585,117 @@ function copyArticle() {{
 """
 
 
+def render_wechat_article_html(title: str, content: str, author: str = "", digest: str = "", layout: str = "simple") -> str:
+    safe_title = html.escape(title)
+    safe_author = html.escape(author or "CreatorBuddy")
+    safe_digest = html.escape(digest or "由 CreatorBuddy 生成的公众号发布预览，请在后台预览后再发布。")
+    paragraphs = split_paragraphs(content)
+    if not paragraphs:
+        paragraphs = ["待补充正文。"]
+
+    if layout == "component":
+        return render_wechat_preview_document(title, render_wechat_component_article(title, paragraphs, safe_author, safe_digest))
+
+    body_blocks = []
+    for index, paragraph in enumerate(paragraphs, start=1):
+        escaped = html.escape(paragraph).replace("\n", "<br />")
+        if re.match(r"^(#{1,3}\s+|[一二三四五六七八九十]+[、.．]|[0-9]+[、.．])", paragraph):
+            heading = re.sub(r"^#{1,3}\s+", "", paragraph)
+            safe_heading = html.escape(heading)
+            body_blocks.append(
+                f'<section style="display:flex;align-items:center;gap:10px;margin:22px 0 10px;">'
+                f'<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#1f3d35;color:#fff;font-size:13px;font-weight:800;">{index}</span>'
+                f'<p style="margin:0;font-size:16px;line-height:1.55;color:#1d1d1f;font-weight:700;">{safe_heading}</p>'
+                f'</section>'
+            )
+        else:
+            body_blocks.append(f'<p style="margin:12px 0;font-size:15px;line-height:1.85;color:#242624;">{escaped}</p>')
+
+    article = f"""
+<section style="margin:0 auto;padding:24px 20px 32px;max-width:677px;background:#fff;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;font-size:15px;line-height:1.8;letter-spacing:0;">
+  <section style="margin:0 0 22px;padding:28px 20px;border-radius:14px;background:#14241f;text-align:center;">
+    <p style="margin:0 0 8px;font-size:11px;line-height:1.6;color:rgba(255,255,255,0.42);font-weight:600;letter-spacing:3px;">CREATORBUDDY · 公众号</p>
+    <p style="margin:0 0 10px;font-size:21px;line-height:1.38;color:#fff;font-weight:800;">{safe_title}</p>
+    <p style="margin:0;font-size:13px;line-height:1.7;color:rgba(255,255,255,0.62);">{safe_digest}</p>
+  </section>
+  <h1 style="display:none;">{safe_title}</h1>
+  <p style="margin:0 0 18px;font-size:13px;line-height:1.7;color:#7a7d78;">作者：{safe_author}</p>
+  {''.join(body_blocks)}
+  <section style="margin:26px 0 0;padding:18px;border-radius:10px;background:#f4f7f5;border:1px solid #e2ebe6;">
+    <p style="margin:0 0 8px;font-size:16px;line-height:1.5;color:#1f3d35;font-weight:750;">发布前确认</p>
+    <p style="margin:8px 0 0;font-size:14px;line-height:1.75;color:#4f5b55;">请在公众号后台预览标题、封面、摘要、图片和移动端换行后再发布。CreatorBuddy 只负责生成发布物料，不替代最终人工确认。</p>
+  </section>
+</section>
+""".strip()
+
+    return render_wechat_preview_document(title, article)
+
+
+def render_wechat_component_article(title: str, paragraphs: list[str], safe_author: str, safe_digest: str) -> str:
+    safe_title = html.escape(title)
+    intro = html.escape(paragraphs[0])
+    rest = paragraphs[1:] or ["先把问题拆成一个今天能执行的小任务，再用内容承接产品路径。"]
+    sections = []
+    step_words = ["第一", "第二", "第三"]
+    step_items = rest[:3]
+    for index, paragraph in enumerate(rest, start=1):
+        safe = html.escape(re.sub(r"^#{1,3}\s+", "", paragraph)).replace("\n", "<br />")
+        if index <= 3:
+            sections.append(
+                f'<section style="margin:48px 0 24px;padding:0 20px;display:flex;align-items:center;">'
+                f'<div style="text-align:center;flex:0 0 auto;margin-right:14px;"><p style="margin:0;font-size:28px;font-weight:900;line-height:1;color:#059669;">{index:02d}</p><p style="margin:2px 0 0;font-size:10px;font-weight:700;letter-spacing:2px;color:#9CA3AF;">PART</p></div>'
+                f'<div style="width:1px;height:36px;background:#E5E7EB;flex:0 0 auto;margin-right:14px;"></div>'
+                f'<div><p style="margin:0;font-size:17px;font-weight:900;color:#111827;">{safe[:48]}</p><p style="margin:2px 0 0;font-size:11px;color:#9CA3AF;">CreatorBuddy 发布检查</p></div>'
+                f'</section>'
+            )
+        sections.append(f'<p style="margin:0 20px 20px;font-size:14px;line-height:1.85;letter-spacing:0.5px;color:#374151;text-align:justify;">{safe}</p>')
+        if index == 1:
+            sections.append(
+                '<section style="margin:0 20px 24px;padding:14px 16px;border-radius:10px;background:#ECFDF5;border-left:3px solid #059669;">'
+                '<p style="margin:0;font-size:14px;line-height:1.8;color:#065F46;"><strong>提示</strong> — 这篇文章已进入发布适配器，请在公众号后台确认标题、摘要、封面和移动端换行。</p>'
+                '</section>'
+            )
+
+    step_cards = []
+    for idx, item in enumerate(step_items[:3]):
+        safe_item = html.escape(re.sub(r"^#{1,3}\s+", "", item))
+        step_cards.append(
+            f'<section style="margin:8px 20px;padding:10px 14px;border-radius:8px;background:#f9fafb;border:1px solid #e5e7eb;">'
+            f'<p style="margin:0;font-size:15px;line-height:1.8;color:#1d1d1f;"><span style="color:#059669;font-weight:800;margin-right:6px;">{step_words[idx]}</span>{safe_item}</p>'
+            f'</section>'
+        )
+
+    return f"""
+<section style="max-width:677px;margin:0 auto;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:#374151;line-height:1.75;letter-spacing:0.5px;overflow-x:hidden;">
+  <section style="margin:0 20px 32px;background:#fff;border:1.5px solid rgba(5,150,105,0.15);border-radius:20px;box-shadow:0 4px 20px rgba(0,0,0,0.06);overflow:hidden;">
+    <div style="padding:32px 24px 28px;">
+      <p style="margin:0 0 14px;font-size:11px;font-weight:700;letter-spacing:2px;color:#9CA3AF;">CREATORBUDDY · 公众号</p>
+      <p style="margin:0;font-size:28px;font-weight:900;line-height:1.12;letter-spacing:-1px;color:#111827;">{safe_title}</p>
+      <p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#6B7280;">{safe_digest}</p>
+    </div>
+    <div style="height:6px;background:linear-gradient(90deg,#059669,#10B981);"></div>
+  </section>
+  <h1 style="display:none;">{safe_title}</h1>
+  <p style="margin:0 20px 20px;font-size:12px;line-height:1.7;color:#9CA3AF;">作者：{safe_author}</p>
+  <p style="margin:0 20px 20px;font-size:14px;line-height:1.85;letter-spacing:0.5px;color:#374151;text-align:justify;">{intro}</p>
+  <section style="margin:0 20px 24px;padding:14px 16px;border-radius:10px;background:#ECFDF5;border-left:3px solid #059669;">
+    <p style="margin:0;font-size:14px;line-height:1.8;color:#065F46;"><strong>这篇文章解决什么</strong> — 把一个内容机会整理成公众号可阅读、可复制、可复盘的发布版本。</p>
+  </section>
+  {''.join(step_cards)}
+  {''.join(sections)}
+  <section style="margin:28px 20px 20px;padding:18px;border-radius:12px;background:#111827;">
+    <p style="margin:0 0 8px;font-size:16px;line-height:1.5;color:#fff;font-weight:800;">写在最后</p>
+    <p style="margin:8px 0;font-size:15px;line-height:1.8;color:rgba(255,255,255,0.82);">发布不是终点。发出后请回到 CreatorBuddy 记录阅读、点赞、评论、私信和转化，再让复盘进入下一次选题。</p>
+  </section>
+  <section style="margin:16px 20px 0;">
+    <span style="display:inline-block;padding:4px 10px;border-radius:20px;background:#f3f4f6;color:#9ca3af;font-size:11px;margin-right:6px;">#公众号</span>
+    <span style="display:inline-block;padding:4px 10px;border-radius:20px;background:#f3f4f6;color:#9ca3af;font-size:11px;margin-right:6px;">#内容增长</span>
+    <span style="display:inline-block;padding:4px 10px;border-radius:20px;background:#f3f4f6;color:#9ca3af;font-size:11px;">#CreatorBuddy</span>
+  </section>
+</section>
+""".strip()
+
+
 def command_wechat_publish(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace or default_workspace())
     load_config(workspace)
@@ -1637,6 +1711,9 @@ def command_wechat_publish(args: argparse.Namespace) -> int:
         raise SystemExit("wechat-publish 需要 --title，或传入包含 title 的 --draft-file。")
     if not content.strip():
         raise SystemExit("wechat-publish 需要 --content / --file，或传入包含 body 的 --draft-file。")
+    layout = args.layout or "simple"
+    if layout not in {"simple", "component"}:
+        raise SystemExit("wechat-publish --layout 仅支持 simple 或 component。")
 
     precheck = build_precheck_payload(workspace, "wechat-mp", title, content)
     precheck_report = write_precheck_report(workspace, "wechat-mp", precheck)
@@ -1644,7 +1721,7 @@ def command_wechat_publish(args: argparse.Namespace) -> int:
     out_dir = paths(workspace)["publish"] / "wechat-mp"
     out_dir.mkdir(parents=True, exist_ok=True)
     preview = out_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{safe_slug(title, 'wechat-article')}.html"
-    preview.write_text(render_wechat_article_html(title, content, args.author, args.digest), encoding="utf-8")
+    preview.write_text(render_wechat_article_html(title, content, args.author, args.digest, layout), encoding="utf-8")
 
     publisher_dir = resolve_wechat_publisher_dir()
     payload: dict[str, Any] = {
@@ -1652,6 +1729,7 @@ def command_wechat_publish(args: argparse.Namespace) -> int:
         "adapter": "wechat-publisher",
         "platform": "wechat-mp",
         "mode": "copy-preview",
+        "layout": layout,
         "title": title,
         "preview_path": str(preview),
         "precheck": precheck,
@@ -1710,11 +1788,11 @@ def command_wechat_publish(args: argparse.Namespace) -> int:
             "stdout": proc.stdout,
             "stderr": proc.stderr.replace(os.environ.get("WECHAT_APP_SECRET", ""), "***") if os.environ.get("WECHAT_APP_SECRET") else proc.stderr,
         })
-        append_jsonl(paths(workspace)["runs"], {"run_id": datetime.now().strftime("%Y%m%d%H%M%S"), "created_at": now_iso(), "adapter": "wechat-publisher", "preview_path": str(preview), "mode": payload["mode"], "ok": payload["ok"]})
+        append_jsonl(paths(workspace)["runs"], {"run_id": datetime.now().strftime("%Y%m%d%H%M%S"), "created_at": now_iso(), "adapter": "wechat-publisher", "preview_path": str(preview), "mode": payload["mode"], "layout": layout, "ok": payload["ok"]})
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if payload["ok"] else 1
 
-    append_jsonl(paths(workspace)["runs"], {"run_id": datetime.now().strftime("%Y%m%d%H%M%S"), "created_at": now_iso(), "adapter": "wechat-publisher", "preview_path": str(preview), "mode": payload["mode"], "ok": True})
+    append_jsonl(paths(workspace)["runs"], {"run_id": datetime.now().strftime("%Y%m%d%H%M%S"), "created_at": now_iso(), "adapter": "wechat-publisher", "preview_path": str(preview), "mode": payload["mode"], "layout": layout, "ok": True})
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -2176,6 +2254,7 @@ def build_parser() -> argparse.ArgumentParser:
     wechat_publish.add_argument("--draft-file", default="")
     wechat_publish.add_argument("--author", default="")
     wechat_publish.add_argument("--digest", default="")
+    wechat_publish.add_argument("--layout", default="simple", choices=["simple", "component"], help="公众号预览排版：simple 稳定简版；component 使用组件化精排版")
     wechat_publish.add_argument("--cover", default="")
     wechat_publish.add_argument("--gen-cover", action="store_true")
     wechat_publish.add_argument("--send-draft", action="store_true", help="需要已配置公众号凭证和封面，调用 wechat-publisher 写入草稿箱")

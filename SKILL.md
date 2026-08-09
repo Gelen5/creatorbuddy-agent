@@ -89,6 +89,11 @@ python scripts/creatorbuddy.py wechat-publish --title "公众号标题" --conten
 
 Default mode is `copy-preview`: CreatorBuddy writes a WeChat-compatible HTML preview under `publish/wechat-mp/`, with `ARTICLE HTML START/END` markers and a copy button. This mode requires no WeChat credentials.
 
+Layout options:
+
+- `--layout simple`: stable plain preview.
+- `--layout component`: component layout adapted from the local publisher component library, including hero card, numbered sections, callout, step cards, summary block, and chips.
+
 Only use `--send-draft` when the user explicitly wants one-click draft-box publishing and has configured an authenticated WeChat Official Account, AppID/AppSecret, IP whitelist, and a cover image:
 
 ```powershell

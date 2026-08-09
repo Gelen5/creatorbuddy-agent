@@ -244,7 +244,8 @@ async function createWechatPreview() {
     body: {
       title: state.draft.title,
       content: state.draft.body,
-      digest: state.draft.opening
+      digest: state.draft.opening,
+      layout: "component"
     }
   });
   state.publisher = result.publisher;

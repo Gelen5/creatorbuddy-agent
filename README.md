@@ -56,6 +56,7 @@ python scripts\creatorbuddy.py onboarding-status
 python scripts\creatorbuddy.py workflow-audit
 python scripts\creatorbuddy.py daily-run
 python scripts\creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文"
+python scripts\creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文" --layout component
 ```
 
 `workflow-audit` is the inner-test acceptance check for the commercial MVP loop. It verifies evidence for:

@@ -31,6 +31,27 @@ Default output:
 
 The HTML preview includes `ARTICLE HTML START/END` markers and a copy button. It does not require WeChat credentials.
 
+## Layout Options
+
+```powershell
+python scripts\creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文" --layout simple
+python scripts\creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文" --layout component
+```
+
+`simple` is the stable minimal preview.
+
+`component` uses the publisher component style:
+
+- hero card;
+- numbered section headers;
+- body paragraphs;
+- green callout;
+- step cards;
+- final summary block;
+- tags/chips.
+
+It still outputs copy-preview HTML and still avoids credentials by default.
+
 ## Optional Draft Box Publishing
 
 Only use this when the user has a certified WeChat Official Account and has configured publisher credentials:

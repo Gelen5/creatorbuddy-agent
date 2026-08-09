@@ -346,6 +346,7 @@ async function handleApi(req, res, url) {
     appendArg(args, "--draft-file", body.draftFile);
     appendArg(args, "--author", body.author);
     appendArg(args, "--digest", body.digest);
+    appendArg(args, "--layout", body.layout || "component");
     appendArg(args, "--cover", body.cover);
     if (body.genCover) args.push("--gen-cover");
     if (body.sendDraft) args.push("--send-draft");
