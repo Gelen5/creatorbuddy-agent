@@ -79,6 +79,28 @@ Evidence boundary:
 - body text, comments, full carousel media, OCR, ASR, saves, shares, and conversion require detail links, logged-in capture, or manual imports;
 - never copy exact wording, identity, images, screenshots, claims, or creator stories.
 
+## WeChat Publisher Adapter
+
+CreatorBuddy can route WeChat Official Account publishing work to `wechat-publisher` without turning publisher into the growth brain.
+
+```powershell
+python scripts/creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文"
+```
+
+Default mode is `copy-preview`: CreatorBuddy writes a WeChat-compatible HTML preview under `publish/wechat-mp/`, with `ARTICLE HTML START/END` markers and a copy button. This mode requires no WeChat credentials.
+
+Only use `--send-draft` when the user explicitly wants one-click draft-box publishing and has configured an authenticated WeChat Official Account, AppID/AppSecret, IP whitelist, and a cover image:
+
+```powershell
+python scripts/creatorbuddy.py wechat-publish --title "公众号标题" --file article.md --send-draft --cover cover.jpg
+```
+
+Boundary:
+
+- CreatorBuddy decides topic, strategy, evidence, draft, precheck, and review.
+- `wechat-publisher` handles WeChat HTML/draft execution.
+- Never expose, print, or invent AppSecret. Missing credentials should produce setup guidance, not fake success.
+
 ## Mandatory Draft Gate
 
 For Douyin/TikTok scripts, covers, titles, captions, topic plans, or any creator-facing content draft, the agent must pass this gate before writing final copy:

@@ -1,7 +1,8 @@
 const state = {
   dashboard: null,
   section: "home",
-  draft: null
+  draft: null,
+  publisher: null
 };
 
 const platformName = {
@@ -228,10 +229,33 @@ async function createDraft() {
   toast("草稿简报已生成。");
 }
 
+async function createWechatPreview() {
+  if (!state.draft) {
+    toast("请先生成公众号草稿。");
+    return;
+  }
+  if (state.draft.platform !== "wechat-mp") {
+    toast("公众号预览只适用于公众号平台草稿。");
+    return;
+  }
+  toast("正在生成公众号复制预览...");
+  const result = await api("/api/wechat-publish", {
+    method: "POST",
+    body: {
+      title: state.draft.title,
+      content: state.draft.body,
+      digest: state.draft.opening
+    }
+  });
+  state.publisher = result.publisher;
+  toast(`公众号预览已生成：${result.publisher?.preview_path || "查看 publish/wechat-mp 目录"}`);
+}
+
 function renderDraft(draft) {
   $("draftPreview").hidden = false;
   $("draftTitle").textContent = `${draft.platformLabel} · ${draft.title}`;
   $("draftOpening").textContent = draft.opening;
+  $("wechatPreviewButton").hidden = draft.platform !== "wechat-mp";
   $("draftStructure").innerHTML = "";
   $("draftChecklist").innerHTML = "";
   for (const item of draft.structure || []) {
@@ -546,6 +570,7 @@ function bindEvents() {
   $("scoreButton").addEventListener("click", () => refreshScores().catch((error) => toast(error.message)));
   $("precheckDemoButton").addEventListener("click", () => precheckSample().catch((error) => toast(error.message)));
   $("createDraftButton").addEventListener("click", () => createDraft().catch((error) => toast(error.message)));
+  $("wechatPreviewButton").addEventListener("click", () => createWechatPreview().catch((error) => toast(error.message)));
   $("reviewEvidenceButton").addEventListener("click", reviewEvidence);
   $("commandButton").addEventListener("click", runCommand);
   $("commandInput").addEventListener("keydown", (event) => {
@@ -563,6 +588,7 @@ function bindEvents() {
 
 window.creatorBuddyCreateDraft = () => createDraft().catch((error) => toast(error.message));
 window.creatorBuddyPrecheck = () => precheckSample().catch((error) => toast(error.message));
+window.creatorBuddyWechatPreview = () => createWechatPreview().catch((error) => toast(error.message));
 
 bindEvents();
 loadDashboard().catch((error) => toast(error.message));

@@ -262,6 +262,47 @@ class WorkflowSmokeTest(unittest.TestCase):
             self.assertEqual(result["verdict"], "小改后发布")
             self.assertIn("小红书标题空泛词：宝藏", result["risks"])
 
+    def test_wechat_publisher_adapter_generates_copy_preview_without_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            run_cli(workspace, "init")
+            run_cli(workspace, "set-account", "--platform", "wechat-mp", "--account-id", "wx-1", "--account-name", "测试公众号")
+            run_cli(
+                workspace,
+                "set-profile",
+                "--platform",
+                "wechat-mp",
+                "--positioning",
+                "帮助普通人用 AI 做内容",
+                "--target-audience",
+                "自媒体新手",
+                "--content-directions",
+                "AI工具教程,案例复盘",
+                "--commercial-goal",
+                "内容获客",
+                "--core-product",
+                "AI训练营",
+            )
+            result = json.loads(run_cli(
+                workspace,
+                "wechat-publish",
+                "--title",
+                "AI工具教程第一篇",
+                "--content",
+                "content_id: wx-001\n\n这是一篇公众号文章正文。\n\nCTA 转化：欢迎继续关注。",
+                "--author",
+                "测试作者",
+            ).stdout)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["adapter"], "wechat-publisher")
+            self.assertEqual(result["mode"], "copy-preview")
+            preview = Path(result["preview_path"])
+            self.assertTrue(preview.exists())
+            text = preview.read_text(encoding="utf-8")
+            self.assertIn("ARTICLE HTML START", text)
+            self.assertIn("复制带样式 HTML", text)
+            self.assertTrue(Path(result["precheck_report"]).exists())
+
     def test_import_segment_and_distill_xiaohongshu_benchmark(self):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)

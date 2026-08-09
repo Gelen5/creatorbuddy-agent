@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import re
@@ -152,6 +153,7 @@ def paths(workspace: Path) -> dict[str, Path]:
         "benchmarks": data / "benchmarks",
         "reports": workspace / "reports",
         "drafts": workspace / "drafts",
+        "publish": workspace / "publish",
     }
 
 
@@ -1459,18 +1461,13 @@ def command_draft(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_precheck(args: argparse.Namespace) -> int:
-    workspace = Path(args.workspace or default_workspace())
+def build_precheck_payload(workspace: Path, platform: str, title: str, content: str) -> dict[str, Any]:
     config = load_config(workspace)
-    title = args.title or ""
-    content = args.content or ""
-    if args.file:
-        content = Path(args.file).read_text(encoding="utf-8")
     text = f"{title}\n{content}"
     risks = [word for word in config.get("risk_keywords", []) if word and word in text]
     xhs_title_risks = []
     playbook = config.get("xiaohongshu_playbook") or DEFAULT_XIAOHONGSHU_PLAYBOOK
-    if args.platform == "xiaohongshu":
+    if platform == "xiaohongshu":
         xhs_title_risks = [word for word in playbook.get("title_banned_terms", []) if word and word in title]
         risks.extend([f"小红书标题空泛词：{word}" for word in xhs_title_risks])
     missing = []
@@ -1480,17 +1477,244 @@ def command_precheck(args: argparse.Namespace) -> int:
         missing.append("正文/脚本为空")
     if "content_id" not in text and "转化" not in text and "CTA" not in text.upper():
         missing.append("缺少转化或归因说明")
+    suggestions = ["保留具体证据", "避免夸大收益", "确认平台表达方式", "补充 CTA、content_id 和发布后归因字段"]
+    if platform == "xiaohongshu":
+        suggestions.append("小红书标题优先用具体场景、用户处境或搜索问题")
+    if platform == "wechat-mp":
+        suggestions.append("公众号文章需要确认标题、摘要、封面、正文排版和移动端预览")
     payload = {
         "ok": not risks and not missing,
         "verdict": "可以进入人工发布确认" if not risks and not missing else "小改后发布",
         "risks": risks,
         "missing": missing,
-        "suggestions": ["保留具体证据", "避免夸大收益", "确认平台表达方式", "补充 CTA、content_id 和发布后归因字段", "小红书标题优先用具体场景、用户处境或搜索问题"],
+        "suggestions": suggestions,
         "created_at": now_iso(),
     }
-    report = paths(workspace)["reports"] / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{args.platform}-precheck.json"
+    return payload
+
+
+def write_precheck_report(workspace: Path, platform: str, payload: dict[str, Any]) -> Path:
+    report = paths(workspace)["reports"] / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{platform}-precheck.json"
     write_json(report, payload)
+    return report
+
+
+def command_precheck(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    title = args.title or ""
+    content = args.content or ""
+    if args.file:
+        content = Path(args.file).read_text(encoding="utf-8")
+    payload = build_precheck_payload(workspace, args.platform, title, content)
+    report = write_precheck_report(workspace, args.platform, payload)
     payload["report"] = str(report)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def resolve_wechat_publisher_dir() -> Path | None:
+    candidates = []
+    env_dir = os.environ.get("CREATORBUDDY_WECHAT_PUBLISHER_DIR") or os.environ.get("WECHAT_PUBLISHER_DIR")
+    if env_dir:
+        candidates.append(Path(env_dir))
+    candidates.extend([
+        SKILL_DIR.parent / "wechat-publisher",
+        Path.home() / ".codex" / "skills" / "wechat-publisher",
+        Path("D:/Download/codex/.codex/skills/wechat-publisher"),
+    ])
+    for candidate in candidates:
+        if (candidate / "scripts" / "publish.ts").exists():
+            return candidate
+    return None
+
+
+def split_paragraphs(content: str) -> list[str]:
+    parts = [part.strip() for part in re.split(r"\n\s*\n", content.strip()) if part.strip()]
+    if parts:
+        return parts
+    return [line.strip() for line in content.splitlines() if line.strip()]
+
+
+def render_wechat_article_html(title: str, content: str, author: str = "", digest: str = "") -> str:
+    safe_title = html.escape(title)
+    safe_author = html.escape(author or "CreatorBuddy")
+    safe_digest = html.escape(digest or "由 CreatorBuddy 生成的公众号发布预览，请在后台预览后再发布。")
+    paragraphs = split_paragraphs(content)
+    if not paragraphs:
+        paragraphs = ["待补充正文。"]
+    body_blocks = []
+    for index, paragraph in enumerate(paragraphs, start=1):
+        escaped = html.escape(paragraph).replace("\n", "<br />")
+        if re.match(r"^(#{1,3}\s+|[一二三四五六七八九十]+[、.．]|[0-9]+[、.．])", paragraph):
+            heading = re.sub(r"^#{1,3}\s+", "", paragraph)
+            safe_heading = html.escape(heading)
+            body_blocks.append(
+                f'<section style="display:flex;align-items:center;gap:10px;margin:22px 0 10px;">'
+                f'<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#1f3d35;color:#fff;font-size:13px;font-weight:800;">{index}</span>'
+                f'<p style="margin:0;font-size:16px;line-height:1.55;color:#1d1d1f;font-weight:700;">{safe_heading}</p>'
+                f'</section>'
+            )
+        else:
+            body_blocks.append(f'<p style="margin:12px 0;font-size:15px;line-height:1.85;color:#242624;">{escaped}</p>')
+
+    article = f"""
+<section style="margin:0 auto;padding:24px 20px 32px;max-width:677px;background:#fff;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;font-size:15px;line-height:1.8;letter-spacing:0;">
+  <section style="margin:0 0 22px;padding:28px 20px;border-radius:14px;background:#14241f;text-align:center;">
+    <p style="margin:0 0 8px;font-size:11px;line-height:1.6;color:rgba(255,255,255,0.42);font-weight:600;letter-spacing:3px;">CREATORBUDDY · 公众号</p>
+    <p style="margin:0 0 10px;font-size:21px;line-height:1.38;color:#fff;font-weight:800;">{safe_title}</p>
+    <p style="margin:0;font-size:13px;line-height:1.7;color:rgba(255,255,255,0.62);">{safe_digest}</p>
+  </section>
+  <h1 style="display:none;">{safe_title}</h1>
+  <p style="margin:0 0 18px;font-size:13px;line-height:1.7;color:#7a7d78;">作者：{safe_author}</p>
+  {''.join(body_blocks)}
+  <section style="margin:26px 0 0;padding:18px;border-radius:10px;background:#f4f7f5;border:1px solid #e2ebe6;">
+    <p style="margin:0 0 8px;font-size:16px;line-height:1.5;color:#1f3d35;font-weight:750;">发布前确认</p>
+    <p style="margin:8px 0 0;font-size:14px;line-height:1.75;color:#4f5b55;">请在公众号后台预览标题、封面、摘要、图片和移动端换行后再发布。CreatorBuddy 只负责生成发布物料，不替代最终人工确认。</p>
+  </section>
+</section>
+""".strip()
+
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>{safe_title}</title>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#f0f0f0; display:flex; justify-content:center; padding:20px; font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif; }}
+.phone-frame {{ width:375px; background:#fff; border-radius:24px; box-shadow:0 8px 40px rgba(0,0,0,.12); overflow:hidden; }}
+.phone-header {{ height:44px; display:flex; align-items:center; justify-content:center; font-size:12px; color:#999; border-bottom:1px solid #f0f0f0; }}
+.copy-bar {{ position:sticky; bottom:0; background:#fff; border-top:1px solid #eee; padding:12px 16px; display:flex; gap:8px; }}
+.copy-bar button {{ flex:1; padding:10px; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; }}
+.btn-copy {{ background:#1d1d1f; color:#fff; }}
+.btn-top {{ background:#f5f5f7; color:#1d1d1f; }}
+</style>
+</head>
+<body>
+<div class="phone-frame">
+  <div class="phone-header">公众号文章预览</div>
+  <div id="article-content">
+<!-- ARTICLE HTML START -->
+{article}
+<!-- ARTICLE HTML END -->
+  </div>
+  <div class="copy-bar">
+    <button class="btn-copy" onclick="copyArticle()">复制带样式 HTML</button>
+    <button class="btn-top" onclick="window.scrollTo({{top:0,behavior:'smooth'}})">回到顶部</button>
+  </div>
+</div>
+<script>
+function copyArticle() {{
+  const html = document.getElementById('article-content').innerHTML;
+  navigator.clipboard.write([new ClipboardItem({{
+    'text/html': new Blob([html], {{type: 'text/html'}}),
+    'text/plain': new Blob([html], {{type: 'text/plain'}})
+  }})]).then(() => {{
+    const b = document.querySelector('.btn-copy');
+    b.textContent = '已复制';
+    setTimeout(() => b.textContent = '复制带样式 HTML', 2000);
+  }});
+}}
+</script>
+</body>
+</html>
+"""
+
+
+def command_wechat_publish(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace or default_workspace())
+    load_config(workspace)
+    title = args.title.strip()
+    content = args.content or ""
+    if args.file:
+        content = Path(args.file).read_text(encoding="utf-8")
+    if args.draft_file:
+        draft = read_json(Path(args.draft_file), {})
+        title = title or str(draft.get("title") or "")
+        content = content or str(draft.get("body") or draft.get("opening") or "")
+    if not title:
+        raise SystemExit("wechat-publish 需要 --title，或传入包含 title 的 --draft-file。")
+    if not content.strip():
+        raise SystemExit("wechat-publish 需要 --content / --file，或传入包含 body 的 --draft-file。")
+
+    precheck = build_precheck_payload(workspace, "wechat-mp", title, content)
+    precheck_report = write_precheck_report(workspace, "wechat-mp", precheck)
+
+    out_dir = paths(workspace)["publish"] / "wechat-mp"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    preview = out_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{safe_slug(title, 'wechat-article')}.html"
+    preview.write_text(render_wechat_article_html(title, content, args.author, args.digest), encoding="utf-8")
+
+    publisher_dir = resolve_wechat_publisher_dir()
+    payload: dict[str, Any] = {
+        "ok": True,
+        "adapter": "wechat-publisher",
+        "platform": "wechat-mp",
+        "mode": "copy-preview",
+        "title": title,
+        "preview_path": str(preview),
+        "precheck": precheck,
+        "precheck_report": str(precheck_report),
+        "publisher_dir": str(publisher_dir) if publisher_dir else "",
+        "next_action": "打开 preview_path，复制带样式 HTML 到公众号后台；如需一键进草稿箱，配置凭证后使用 --send-draft --cover <封面图>。",
+        "created_at": now_iso(),
+    }
+
+    if args.send_draft:
+        if not publisher_dir:
+            payload.update({
+                "ok": False,
+                "mode": "draft-add",
+                "error": "未找到 wechat-publisher skill。请安装 wechat-publisher，或设置 CREATORBUDDY_WECHAT_PUBLISHER_DIR。",
+            })
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 2
+        if not args.cover and not args.gen_cover:
+            payload.update({
+                "ok": False,
+                "mode": "draft-add",
+                "error": "一键进草稿箱需要封面：传 --cover <path>，或在配置 OPENAI_API_KEY 后使用 --gen-cover。",
+            })
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 2
+        npx = shutil.which("npx.cmd") or shutil.which("npx")
+        if not npx:
+            payload.update({"ok": False, "mode": "draft-add", "error": "未找到 npx。请先安装 Node.js。"})
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 2
+        publish_args = [npx, "tsx", "publish.ts", str(preview), "--title", title]
+        if args.author:
+            publish_args.extend(["--author", args.author])
+        if args.digest:
+            publish_args.extend(["--digest", args.digest])
+        if args.cover:
+            publish_args.extend(["--cover", args.cover])
+        if args.gen_cover:
+            publish_args.append("--gen-cover")
+        if args.no_comment:
+            publish_args.append("--no-comment")
+        proc = subprocess.run(
+            publish_args,
+            cwd=publisher_dir / "scripts",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        payload.update({
+            "ok": proc.returncode == 0,
+            "mode": "draft-add",
+            "returncode": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr.replace(os.environ.get("WECHAT_APP_SECRET", ""), "***") if os.environ.get("WECHAT_APP_SECRET") else proc.stderr,
+        })
+        append_jsonl(paths(workspace)["runs"], {"run_id": datetime.now().strftime("%Y%m%d%H%M%S"), "created_at": now_iso(), "adapter": "wechat-publisher", "preview_path": str(preview), "mode": payload["mode"], "ok": payload["ok"]})
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if payload["ok"] else 1
+
+    append_jsonl(paths(workspace)["runs"], {"run_id": datetime.now().strftime("%Y%m%d%H%M%S"), "created_at": now_iso(), "adapter": "wechat-publisher", "preview_path": str(preview), "mode": payload["mode"], "ok": True})
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -1944,6 +2168,19 @@ def build_parser() -> argparse.ArgumentParser:
     precheck.add_argument("--content", default="")
     precheck.add_argument("--file", default="")
     precheck.set_defaults(func=command_precheck)
+
+    wechat_publish = sub.add_parser("wechat-publish", help="调用 wechat-publisher 适配器生成公众号复制预览，可选一键写入草稿箱")
+    wechat_publish.add_argument("--title", default="")
+    wechat_publish.add_argument("--content", default="")
+    wechat_publish.add_argument("--file", default="")
+    wechat_publish.add_argument("--draft-file", default="")
+    wechat_publish.add_argument("--author", default="")
+    wechat_publish.add_argument("--digest", default="")
+    wechat_publish.add_argument("--cover", default="")
+    wechat_publish.add_argument("--gen-cover", action="store_true")
+    wechat_publish.add_argument("--send-draft", action="store_true", help="需要已配置公众号凭证和封面，调用 wechat-publisher 写入草稿箱")
+    wechat_publish.add_argument("--no-comment", action="store_true")
+    wechat_publish.set_defaults(func=command_wechat_publish)
 
     content = sub.add_parser("add-content", help="写入一条内容资产，可用于草稿、已发布内容和复盘沉淀")
     content.add_argument("--platform", required=True)

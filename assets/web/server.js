@@ -337,6 +337,35 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/wechat-publish") {
+    const body = await parseBody(req);
+    const args = ["wechat-publish"];
+    appendArg(args, "--title", body.title);
+    appendArg(args, "--content", body.content);
+    appendArg(args, "--file", body.file);
+    appendArg(args, "--draft-file", body.draftFile);
+    appendArg(args, "--author", body.author);
+    appendArg(args, "--digest", body.digest);
+    appendArg(args, "--cover", body.cover);
+    if (body.genCover) args.push("--gen-cover");
+    if (body.sendDraft) args.push("--send-draft");
+    if (body.noComment) args.push("--no-comment");
+    const result = await runAgent(args, body.sendDraft ? 180000 : 60000);
+    let payload = null;
+    try {
+      payload = JSON.parse(result.stdout);
+    } catch {
+      payload = null;
+    }
+    return sendJson(res, result.ok ? 200 : 500, {
+      ok: result.ok,
+      code: result.code,
+      publisher: payload,
+      stdout: result.stdout,
+      stderr: result.stderr
+    });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/draft") {
     const body = await parseBody(req);
     const dashboard = await readDashboard();

@@ -41,6 +41,8 @@ Xiaohongshu-specific drafts also include a sanitized playbook for profile clarit
 
 Benchmark distillation is available for Xiaohongshu public profile cards: import a benchmark profile, segment visible samples, then generate a `creator_clone.md`. See [`docs/benchmark-distillation.md`](docs/benchmark-distillation.md).
 
+WeChat Official Account publishing is available through the `wechat-publisher` adapter. CreatorBuddy generates a copy-preview HTML by default; optional draft-box publishing requires a configured certified WeChat Official Account. See [`docs/wechat-publisher-adapter.md`](docs/wechat-publisher-adapter.md).
+
 ```powershell
 python scripts\creatorbuddy.py quickstart
 python scripts\creatorbuddy.py set-account --platform xiaohongshu --account-id "your-account-id" --account-name "你的账号"
@@ -53,6 +55,7 @@ python scripts\creatorbuddy.py distill-creator --benchmark-id "benchmark-id"
 python scripts\creatorbuddy.py onboarding-status
 python scripts\creatorbuddy.py workflow-audit
 python scripts\creatorbuddy.py daily-run
+python scripts\creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文"
 ```
 
 `workflow-audit` is the inner-test acceptance check for the commercial MVP loop. It verifies evidence for:
