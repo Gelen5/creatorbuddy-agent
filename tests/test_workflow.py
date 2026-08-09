@@ -73,8 +73,15 @@ class WorkflowSmokeTest(unittest.TestCase):
             rows = (workspace / "data" / "published_content.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(rows), 1)
             self.assertEqual(json.loads(rows[0])["content_id"], "quick-001")
+            self.assertTrue(Path(result["first_report"]).exists())
+            self.assertTrue(Path(result["first_draft_path"]).exists())
+            self.assertTrue(result["first_opportunity"])
+            self.assertTrue(result["first_draft"])
+            self.assertTrue((workspace / "data" / "latest_topic_scores.json").exists())
             status = json.loads(run_cli(workspace, "onboarding-status").stdout)
             self.assertEqual(status["next_action"], "today")
+            daily = json.loads(run_cli(workspace, "run-daily").stdout)
+            self.assertTrue(daily["ok"])
 
     def test_account_gate_and_cold_start_override(self):
         with tempfile.TemporaryDirectory() as directory:

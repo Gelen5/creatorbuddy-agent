@@ -25,8 +25,10 @@ Or run manually:
 ```powershell
 cd "$env:USERPROFILE\.codex\skills\creatorbuddy-agent"
 python scripts\creatorbuddy.py quickstart
-python scripts\creatorbuddy.py today
+python scripts\creatorbuddy.py run-daily
 ```
+
+Quickstart also creates the first opportunity report and first draft brief, so a new tester can see an immediate output after setup.
 
 `quickstart` 会一步步询问：你是谁、做哪个平台、账号定位、核心产品、对标账号、发过什么内容，并自动写入本地 workspace。
 
@@ -55,6 +57,7 @@ python scripts\creatorbuddy.py distill-creator --benchmark-id "benchmark-id"
 python scripts\creatorbuddy.py onboarding-status
 python scripts\creatorbuddy.py workflow-audit
 python scripts\creatorbuddy.py daily-run
+python scripts\creatorbuddy.py run-daily
 python scripts\creatorbuddy.py wechat-publisher-doctor
 python scripts\creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文"
 python scripts\creatorbuddy.py wechat-publish --title "公众号标题" --content "公众号正文" --layout component

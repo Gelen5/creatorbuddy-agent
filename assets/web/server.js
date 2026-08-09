@@ -297,7 +297,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/daily-run") {
     const body = await parseBody(req);
-    const args = ["today"];
+    const args = ["run-daily"];
     const result = await runAgent(args, 180000);
     return sendJson(res, result.ok ? 200 : 500, {
       ok: result.ok,

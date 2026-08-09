@@ -993,6 +993,84 @@ def command_quickstart(args: argparse.Namespace) -> int:
         update_onboarding(config, workspace)
         save_config(workspace, config)
 
+    first_run_topic = args.first_topic or first_title or positioning or account_name
+    first_candidates = generate_scores(workspace, [first_run_topic] if first_run_topic else [])
+    first_opportunity = first_candidates[0] if first_candidates else None
+    first_report = ps["reports"] / f"{datetime.now().strftime('%Y-%m-%d')}-first-run-opportunity.md"
+    report_lines = [
+        "---",
+        "type: first_run_opportunity_report",
+        "schema_version: 1",
+        f"created_at: {now_iso()}",
+        "---",
+        "",
+        "# CreatorBuddy 首次内容机会报告",
+        "",
+        "## 当前账号",
+        "",
+        f"- 平台：{platform_label(platform)}",
+        f"- 账号：{account_name}",
+        f"- 定位：{positioning}",
+        f"- 目标用户：{target_audience}",
+        f"- 内容方向：{'、'.join(split_csv(content_directions)) or '待补充'}",
+        f"- 商业目标：{commercial_goal or '待补充'}",
+        f"- 核心产品：{core_product or '待补充'}",
+        "",
+        "## 第一条建议",
+        "",
+    ]
+    if first_opportunity:
+        report_lines.extend(
+            [
+                f"- 选题：{first_opportunity.get('topic')}",
+                f"- 推荐分：{first_opportunity.get('score')}",
+                f"- 证据等级：{first_opportunity.get('evidence_level')}",
+                f"- 理由：{'；'.join(first_opportunity.get('reasons', []))}",
+                f"- 下一步：用 `draft --platform {first_opportunity.get('platform')} --topic \"{first_opportunity.get('topic')}\"` 生成草稿。",
+            ]
+        )
+    else:
+        report_lines.append("- 暂无候选选题，请补充账号定位、关键词或历史内容后重新运行 today。")
+    report_lines.extend(
+        [
+            "",
+            "## 内测提醒",
+            "",
+            "- 这份报告用于帮助新用户快速跑通第一轮，不代表真实平台热度承诺。",
+            "- 后续接入真实采集后，公开样本、账号数据和复盘经验会继续提高推荐质量。",
+        ]
+    )
+    first_report.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+
+    first_draft_path = ""
+    first_draft: dict[str, Any] | None = None
+    if first_opportunity:
+        first_draft = make_draft(
+            str(first_opportunity.get("topic") or first_run_topic),
+            str(first_opportunity.get("platform") or platform),
+            first_opportunity.get("marketing_judgment") if isinstance(first_opportunity, dict) else None,
+            config,
+        )
+        first_draft["source"] = "quickstart_first_run"
+        first_draft["next_action"] = "run precheck, then publish manually and record metrics"
+        draft_path = ps["drafts"] / f"{datetime.now().strftime('%Y%m%d%H%M%S')}-first-draft.json"
+        write_json(draft_path, first_draft)
+        first_draft_path = str(draft_path)
+
+    append_jsonl(
+        ps["runs"],
+        {
+            "run_id": datetime.now().strftime("%Y%m%d%H%M%S"),
+            "created_at": now_iso(),
+            "source": "quickstart",
+            "report": str(first_report),
+            "draft_path": first_draft_path,
+            "top": first_opportunity,
+        },
+    )
+    update_onboarding(config, workspace)
+    save_config(workspace, config)
+
     status_payload = {
         "ok": True,
         "workspace": str(workspace),
@@ -1008,10 +1086,15 @@ def command_quickstart(args: argparse.Namespace) -> int:
         },
         "benchmark_added": bool(benchmark_name),
         "first_content_id": content_id,
+        "first_report": str(first_report),
+        "first_draft_path": first_draft_path,
+        "first_opportunity": first_opportunity,
+        "first_draft": first_draft,
         "next_commands": [
             "python scripts/creatorbuddy.py onboarding-status",
             "python scripts/creatorbuddy.py today",
             f"python scripts/creatorbuddy.py draft --platform {platform}",
+            "python scripts/creatorbuddy.py run-daily",
         ],
     }
     update_onboarding(config, workspace)
@@ -2313,6 +2396,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     daily = sub.add_parser("daily-run", help="严格执行采集、读取、评分、复盘提醒和自成长")
     daily.set_defaults(func=command_daily_run)
+
+    run_daily = sub.add_parser("run-daily", help="daily-run alias for productized first-use workflows")
+    run_daily.set_defaults(func=command_daily_run)
 
     today = sub.add_parser("today", help="generate today's content opportunities")
     today.add_argument("--topic", action="append", default=[])

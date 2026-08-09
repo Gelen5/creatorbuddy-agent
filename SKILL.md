@@ -156,10 +156,11 @@ If the user has not initialized CreatorBuddy, run:
 
 ```powershell
 python scripts/creatorbuddy.py quickstart
+python scripts/creatorbuddy.py run-daily
 python scripts/creatorbuddy.py doctor
 ```
 
-`quickstart` should be the default first-use path. It asks for owner, platform, account profile, product, benchmark account, and first content asset, then writes the workspace config automatically.
+`quickstart` should be the default first-use path. It asks for owner, platform, account profile, product, benchmark account, and first content asset, then writes the workspace config, first opportunity report, first draft brief, and run log automatically.
 
 Manual equivalent:
 
@@ -169,7 +170,7 @@ python scripts/creatorbuddy.py set-profile --platform xiaohongshu --positioning 
 python scripts/creatorbuddy.py add-benchmark --platform xiaohongshu --account-id "benchmark-id" --account-name "对标账号"
 python scripts/creatorbuddy.py onboarding-status
 python scripts/creatorbuddy.py add-content --platform xiaohongshu --title "第一条内容资产" --body "正文或脚本" --metrics-json '{"likes":0,"comments":0}'
-python scripts/creatorbuddy.py today
+python scripts/creatorbuddy.py run-daily
 python scripts/creatorbuddy.py workflow-audit
 ```
 
@@ -177,6 +178,7 @@ python scripts/creatorbuddy.py workflow-audit
 
 ```powershell
 python scripts/creatorbuddy.py daily-run
+python scripts/creatorbuddy.py run-daily
 ```
 
 注册 Windows 每日运行任务：

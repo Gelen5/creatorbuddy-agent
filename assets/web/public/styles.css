@@ -695,6 +695,36 @@ h1 {
   cursor: wait;
 }
 
+.quickstart-outcome {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  margin: -18px 0 42px;
+  padding: 22px;
+  border: 1px solid rgba(49, 77, 66, 0.16);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 16px 48px rgba(38, 35, 27, 0.06);
+}
+
+.quickstart-outcome h2 {
+  margin: 8px 0;
+  font-size: 22px;
+}
+
+.quickstart-outcome p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.outcome-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .empty-page {
   padding: 44px 0;
   color: var(--muted);

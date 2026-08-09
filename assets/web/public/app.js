@@ -2,7 +2,8 @@ const state = {
   dashboard: null,
   section: "home",
   draft: null,
-  publisher: null
+  publisher: null,
+  quickstartResult: null
 };
 
 const platformName = {
@@ -179,6 +180,7 @@ async function submitQuickstart(event) {
   try {
     toast("正在写入账号配置和第一条内容资产...");
     const result = await api("/api/quickstart", { method: "POST", body: payload });
+    state.quickstartResult = result.quickstart;
     state.dashboard = result.dashboard || (await api("/api/dashboard"));
     renderShell(state.dashboard);
     renderRecommendation(state.dashboard);
@@ -369,6 +371,7 @@ function renderAccountPage(data) {
   const owner = data.config?.owner || "待补充";
   const productKeywords = data.config?.product_keywords || [];
   const primaryPlatform = platforms.find((item) => item.account_name || item.positioning) || platforms[0] || {};
+  const quickstartOutcome = renderQuickstartOutcome(state.quickstartResult);
   return `
     <form class="quickstart-form" id="quickstartForm">
       <div class="form-head">
@@ -439,6 +442,7 @@ function renderAccountPage(data) {
         </label>
       </div>
     </form>
+    ${quickstartOutcome}
     <div class="detail-grid">
       <div class="detail-block">
         <div class="muted-label">我是谁</div>
@@ -470,6 +474,32 @@ function renderAccountPage(data) {
         .join("")}
     </div>
   `;
+}
+
+function renderQuickstartOutcome(result) {
+  if (!result) return "";
+  const opportunity = result.first_opportunity || {};
+  return `
+    <div class="quickstart-outcome">
+      <div>
+        <div class="muted-label">初始化已完成</div>
+        <h2>${escapeHtml(opportunity.topic || "已生成首次内容机会")}</h2>
+        <p>系统已写入账号配置，并生成首次机会报告和第一条草稿。</p>
+      </div>
+      <div class="outcome-links">
+        ${result.first_report ? `<a class="secondary-button" href="${escapeAttr(toWorkspaceFileUrl(result.first_report))}" target="_blank" rel="noreferrer">打开首次报告</a>` : ""}
+        ${result.first_draft_path ? `<a class="secondary-button" href="${escapeAttr(toWorkspaceFileUrl(result.first_draft_path))}" target="_blank" rel="noreferrer">打开第一条草稿</a>` : ""}
+        <button class="primary-button" type="button" onclick="window.creatorBuddyCreateDraft()">继续生成草稿</button>
+      </div>
+    </div>
+  `;
+}
+
+function toWorkspaceFileUrl(filePath) {
+  const vault = state.dashboard?.vault || "";
+  if (!filePath || !vault || !filePath.toLowerCase().startsWith(vault.toLowerCase())) return "";
+  const relative = filePath.slice(vault.length).replace(/^[\\/]+/, "").replace(/\\/g, "/");
+  return `/file/${encodeURIComponent(relative)}`;
 }
 
 function renderPlatformOptions(selected) {
